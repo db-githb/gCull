@@ -472,7 +472,7 @@ __global__ __launch_bounds__(BLOCK_X *BLOCK_Y)
 	void skycullCUDA(
 		const int width,
 		const int height,
-		const bool* sky,
+		const bool* bool_mask,
 		const float focal_x, float focal_y,
 		const uint2 *__restrict__ ranges,
 		const uint32_t *__restrict__ point_list,
@@ -491,7 +491,7 @@ __global__ __launch_bounds__(BLOCK_X *BLOCK_Y)
 
 	int pixelIdx = y * width + x;
 	
-	if(!sky[pixelIdx]){
+	if(!bool_mask[pixelIdx]){
 		return;
 	}
 
@@ -584,7 +584,7 @@ __global__ __launch_bounds__(BLOCK_X *BLOCK_Y)
 				continue;
 			}
 			
-			// tag sky gaussians
+			// tag bool_mask gaussians
 			output[gIdx] = true;
 		}
 	}
@@ -593,7 +593,7 @@ __global__ __launch_bounds__(BLOCK_X *BLOCK_Y)
 void FORWARD::skycull(
 	const dim3 tile_bounds, dim3 block,
 	const int width, int height,
-	const bool* sky,
+	const bool* bool_mask,
 	const float focal_x, float focal_y,
 	const uint2 *__restrict__ ranges,
 	const uint32_t *__restrict__ point_list,
@@ -604,7 +604,7 @@ void FORWARD::skycull(
 	bool* output){
 	skycullCUDA<<<tile_bounds, block>>>(
 		width, height,
-		sky,
+		bool_mask,
 		focal_x, focal_y,
 		ranges,
 		point_list,

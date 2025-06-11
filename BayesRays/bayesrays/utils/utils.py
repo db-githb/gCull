@@ -292,7 +292,7 @@ def get_full_proj_transform(tanHalfFovX, tanHalfFovY, viewMat):
     projMat[2, 3] = -(zfar * znear) / (zfar - znear)
     return (viewMat.unsqueeze(0).bmm(projMat.transpose(0,1).unsqueeze(0))).squeeze(0)
 
-def get_rasterizer_output(model, camera, renderer=False):
+def get_rasterizer_output(model, camera, bool_mask, renderer=False):
     background = torch.ones(3, device=model.device) # get_background(model) - use white background to compare with bayes rays
     _ , T_inv = get_Rt_inv(model, camera, renderer)
     viewmat = get_viewmat(model, camera, renderer)
@@ -338,6 +338,7 @@ def get_rasterizer_output(model, camera, renderer=False):
     gaussian_index = torch.arange(model.means.shape[0], dtype=torch.int32, device="cuda")
 
     raster_pkg, model.radii = rasterizer(
+            bool_mask = bool_mask,
             means3D = means3D,
             means2D = means2D, # not used in gof (legacy param from 3DGS)
             shs = torch.cat((model.features_dc.unsqueeze(1), model.features_rest), dim=1),

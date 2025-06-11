@@ -47,6 +47,7 @@ def cpu_deep_copy_tuple(input_tuple):
     return tuple(copied_tensors)
 
 def rasterize_gaussians(
+    bool_mask,
     means3D,
     means2D,
     sh,
@@ -60,6 +61,7 @@ def rasterize_gaussians(
     raster_settings,
 ):
     return _RasterizeGaussians.apply(
+        bool_mask,
         means3D,
         means2D,
         sh,
@@ -80,6 +82,7 @@ class _RasterizeGaussians(torch.autograd.Function):
     @staticmethod
     def forward(
         ctx,
+        bool_mask,
         means3D,
         means2D,
         sh,
@@ -96,6 +99,7 @@ class _RasterizeGaussians(torch.autograd.Function):
         # Restructure arguments the way that the C++ lib expects them
         args = (
             raster_settings.bg,
+            bool_mask,
             means3D,
             colors_precomp,
             opacities,
@@ -322,7 +326,7 @@ class GaussianRasterizer(nn.Module):
         super().__init__()
         self.raster_settings = raster_settings
 
-    def forward(self, means3D, means2D, opacities, shs = None, colors_precomp = None, scales = None, rotations = None, gaussian_index = None, cov3D_precomp = None, view2gaussian_precomp = None):
+    def forward(self, bool_mask, means3D, means2D, opacities, shs = None, colors_precomp = None, scales = None, rotations = None, gaussian_index = None, cov3D_precomp = None, view2gaussian_precomp = None):
         
         raster_settings = self.raster_settings
 
@@ -350,6 +354,7 @@ class GaussianRasterizer(nn.Module):
             
         # Invoke C++/CUDA rasterization routine
         return rasterize_gaussians(
+            bool_mask,
             means3D,
             means2D,
             shs,

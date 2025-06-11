@@ -241,6 +241,7 @@ int CudaRasterizer::Rasterizer::forward(
 	const int P, int D, int M,
 	const float *background,
 	const int width, int height,
+	const bool *bool_mask,
 	const float *means3D,
 	const float *shs,
 	const float *colors_precomp,
@@ -380,11 +381,10 @@ int CudaRasterizer::Rasterizer::forward(
 	const float *view2gaussian = view2gaussian_precomp != nullptr ? view2gaussian_precomp : geomState.view2gaussian;
 	// const float* view2gaussian = view2gaussian_precomp;
 
-	bool* sky_mask = NULL;
 	CHECK_CUDA(FORWARD::skycull(
 		tile_grid, block,
 		width, height,
-		sky_mask,
+		bool_mask,
 		focal_x, focal_y,
 		imgState.ranges,
 		binningState.point_list,

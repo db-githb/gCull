@@ -60,7 +60,7 @@ from nerfstudio.utils.scripts import run_command
 
 from PIL import Image
 
-sys.path.append('/home/damian/projects/nerfstudio')
+sys.path.append('/home/damian/projects/skycull')
 from BayesRays.bayesrays.utils.utils import get_rasterizer_output, sort_package
 
 
@@ -170,8 +170,8 @@ class DatasetRender(BaseRender):
 
         def get_mask(camera_idx, mask_root):
             filepath = mask_root+"/masks/mask_"+str(camera_idx+1).zfill(4)+".png"
-            mask = Image.open(filepath).convert('1') # convert to 1-bit bitmap
-            return mask
+            bool_mask = torch.tensor(np.array(Image.open(filepath))) != 0 # convert to bool tensor for ease of CUDA hand-off where black = True / non-black = False
+            return bool_mask
 
         def update_config(config: TrainerConfig) -> TrainerConfig:
             data_manager_config = config.pipeline.datamanager
@@ -259,8 +259,8 @@ class DatasetRender(BaseRender):
                         #outputs = pipeline.model.get_outputs_for_camera(camera)         
                         pipeline.model.N = 1 #1080*1920*1000  #approx ray dataset size (train batch size x number of query iterations in uncertainty extraction step)
                         camera.camera_to_worlds = camera.camera_to_worlds.squeeze() # splatoff rasterizer requires cam2world.shape = [3,4]
-                        mask = get_mask(camera_idx, mask_root)
-                        temp = get_rasterizer_output(pipeline.model, camera, True)
+                        bool_mask = get_mask(camera_idx, mask_root)
+                        temp = get_rasterizer_output(pipeline.model, camera, bool_mask, True)
                         outputs = {"rgb": sort_package(temp, camera)["rgb"]}
                         cam2worlds = torch.cat((camera.camera_to_worlds, torch.tensor([[0,0,0,1]], device="cuda")),dim=0).flatten().tolist()
                         camera_path["camera_path"].append({"camera_to_world": cam2worlds, "fov": 50, "aspect": 1})

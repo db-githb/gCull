@@ -20,6 +20,7 @@ int TestCUDA(const int x);
 std::tuple<int, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
 RasterizeGaussiansCUDA(
 	const torch::Tensor& background,
+	const torch::Tensor& bool_mask,
 	const torch::Tensor& means3D,
     const torch::Tensor& colors,
     const torch::Tensor& opacity,
