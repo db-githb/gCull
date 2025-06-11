@@ -171,7 +171,6 @@ class DatasetRender(BaseRender):
         def get_mask(camera_idx, mask_root):
             filepath = mask_root+"/masks/mask_"+str(camera_idx+1).zfill(4)+".png"
             mask = Image.open(filepath).convert('1') # convert to 1-bit bitmap
-            mask.show()
             return mask
 
         def update_config(config: TrainerConfig) -> TrainerConfig:

@@ -322,7 +322,7 @@ class GaussianRasterizer(nn.Module):
         super().__init__()
         self.raster_settings = raster_settings
 
-    def forward(self, two_pass, d_thresh, xg_thresh, m_thresh, s_thresh, cc_thresh, means3D, means2D, opacities, shs = None, colors_precomp = None, scales = None, rotations = None, gaussian_index = None, cov3D_precomp = None, view2gaussian_precomp = None):
+    def forward(self, means3D, means2D, opacities, shs = None, colors_precomp = None, scales = None, rotations = None, gaussian_index = None, cov3D_precomp = None, view2gaussian_precomp = None):
         
         raster_settings = self.raster_settings
 

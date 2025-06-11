@@ -324,11 +324,12 @@ def get_rasterizer_output(model, camera, renderer=False):
     means3D =  model.means
 
     filter_3D = compute_3D_filter(model, camera,.01, renderer) #model.filter3D_scale, renderer) # compute_3D_filter per camera (GOF does it for each camera at the beginning of training)
+    opacity = get_opacity(model, filter_3D) 
 
-    if model.filter3D:
-        opacity =  get_opacity(model, filter_3D) # self.get_opacity_with_3D_filter(self) # mip-splatting 3D filter from GOF self.opacities
-    else:
-        opacity =  get_opacity(model, None) # self.get_opacity_with_3D_filter(self) # mip-splatting 3D filter from GOF self.opacities
+    #if model.filter3D:
+    #    opacity =  get_opacity(model, filter_3D) # self.get_opacity_with_3D_filter(self) # mip-splatting 3D filter from GOF self.opacities
+    #else:
+    #    opacity =  get_opacity(model, None) # self.get_opacity_with_3D_filter(self) # mip-splatting 3D filter from GOF self.opacities
 
     
     scales =   get_scaling(model, filter_3D) # self.get_scaling_with_3D_filter(self) # mip-splatting 3D filter from GOF 
