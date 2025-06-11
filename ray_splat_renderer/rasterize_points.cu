@@ -106,7 +106,7 @@ RasterizeGaussiansCUDA(
 	    P, degree, M,
 		background.contiguous().data<float>(),
 		W, H,
-		bool_mask.contiguous().data<bool>(),
+		bool_mask.contiguous().data_ptr<bool>(),
 		means3D.contiguous().data<float>(),
 		sh.contiguous().data_ptr<float>(),
 		colors.contiguous().data<float>(), 

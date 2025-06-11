@@ -170,7 +170,7 @@ class DatasetRender(BaseRender):
 
         def get_mask(camera_idx, mask_root):
             filepath = mask_root+"/masks/mask_"+str(camera_idx+1).zfill(4)+".png"
-            bool_mask = torch.tensor(np.array(Image.open(filepath))) != 0 # convert to bool tensor for ease of CUDA hand-off where black = True / non-black = False
+            bool_mask = torch.tensor(np.array(Image.open(filepath))) == 0 # convert to bool tensor for ease of CUDA hand-off where black = True / non-black = False
             return bool_mask
 
         def update_config(config: TrainerConfig) -> TrainerConfig:

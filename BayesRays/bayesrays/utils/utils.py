@@ -337,7 +337,7 @@ def get_rasterizer_output(model, camera, bool_mask, renderer=False):
     means2D = torch.zeros_like(opacity)
     gaussian_index = torch.arange(model.means.shape[0], dtype=torch.int32, device="cuda")
 
-    raster_pkg, model.radii = rasterizer(
+    cull_lst, model.radii = rasterizer(
             bool_mask = bool_mask,
             means3D = means3D,
             means2D = means2D, # not used in gof (legacy param from 3DGS)
@@ -350,7 +350,7 @@ def get_rasterizer_output(model, camera, bool_mask, renderer=False):
             cov3D_precomp = None,
             view2gaussian_precomp=None)
     
-    return raster_pkg
+    return cull_lst
 
 
 

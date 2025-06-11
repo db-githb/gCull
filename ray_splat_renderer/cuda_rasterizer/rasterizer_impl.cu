@@ -381,10 +381,14 @@ int CudaRasterizer::Rasterizer::forward(
 	const float *view2gaussian = view2gaussian_precomp != nullptr ? view2gaussian_precomp : geomState.view2gaussian;
 	// const float* view2gaussian = view2gaussian_precomp;
 
+	bool* d_boolMask;
+	cudaMalloc(&d_boolMask, width * height * sizeof(bool));
+	cudaMemcpy(d_boolMask, bool_mask, width * height * sizeof(bool), cudaMemcpyHostToDevice);
+
 	CHECK_CUDA(FORWARD::skycull(
 		tile_grid, block,
 		width, height,
-		bool_mask,
+		d_boolMask,
 		focal_x, focal_y,
 		imgState.ranges,
 		binningState.point_list,

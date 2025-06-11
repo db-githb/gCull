@@ -489,9 +489,9 @@ __global__ __launch_bounds__(BLOCK_X *BLOCK_Y)
 	int y = blockIdx.y * blockDim.y + threadIdx.y;
 	if (x >= width || y >= height) return;
 
-	int pixelIdx = y * width + x;
+	int pixelIdx = x * width + y;
 	
-	if(!bool_mask[pixelIdx]){
+	if(!bool_mask[0]){
 		return;
 	}
 
@@ -540,6 +540,7 @@ __global__ __launch_bounds__(BLOCK_X *BLOCK_Y)
 			if(output[gIdx]){
 				continue;
 			}
+
 			// Resample using conic matrix (cf. "Surface
 			// Splatting" by Zwicker et al., 2001)
 			float4 con_o = collected_conic_opacity[j];
