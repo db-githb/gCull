@@ -59,51 +59,101 @@ from nerfstudio.utils.rich_utils import CONSOLE, ItersPerSecColumn
 from nerfstudio.utils.scripts import run_command
 
 from PIL import Image
+from collections import OrderedDict
 
 sys.path.append('/home/damian/projects/skycull')
 from BayesRays.bayesrays.utils.utils import get_rasterizer_output, sort_package
 
+def setup_write_ply(pipeline):
+    model = pipeline.model
+    count = 0
+    map_to_tensors = OrderedDict()
 
-@dataclass
-class CropData:
-    """Data for cropping an image."""
+    with torch.no_grad():
+        positions = model.means.cpu().numpy()
+        count = positions.shape[0]
+        n = count
 
-    background_color: Float[Tensor, "3"] = torch.Tensor([0.0, 0.0, 0.0])
-    """background color"""
-    obb: OrientedBox = field(default_factory=lambda: OrientedBox(R=torch.eye(3), T=torch.zeros(3), S=torch.ones(3) * 2))
-    """Oriented box representing the crop region"""
+        map_to_tensors["x"] = positions[:, 0]
+        map_to_tensors["y"] = positions[:, 1]
+        map_to_tensors["z"] = positions[:, 2]
+        map_to_tensors["nx"] = np.zeros(n, dtype=np.float32)
+        map_to_tensors["ny"] = np.zeros(n, dtype=np.float32)
+        map_to_tensors["nz"] = np.zeros(n, dtype=np.float32)
 
-    # properties for backwards-compatibility interface
-    @property
-    def center(self):
-        return self.obb.T
+        if model.config.sh_degree > 0:
+            shs_0 = model.shs_0.contiguous().cpu().numpy()
+            for i in range(shs_0.shape[1]):
+                map_to_tensors[f"f_dc_{i}"] = shs_0[:, i, None]
+            # transpose(1, 2) was needed to match the sh order in Inria version
+            shs_rest = model.shs_rest.transpose(1, 2).contiguous().cpu().numpy()
+            shs_rest = shs_rest.reshape((n, -1))
+            for i in range(shs_rest.shape[-1]):
+                map_to_tensors[f"f_rest_{i}"] = shs_rest[:, i, None]
+        else:
+            colors = torch.clamp(model.colors.clone(), 0.0, 1.0).data.cpu().numpy()
+            map_to_tensors["colors"] = (colors * 255).astype(np.uint8)
 
-    @property
-    def scale(self):
-        return self.obb.S
+        map_to_tensors["opacity"] = model.opacities.data.cpu().numpy()
+        scales = model.scales.data.cpu().numpy()
+        for i in range(3):
+            map_to_tensors[f"scale_{i}"] = scales[:, i, None]
+        quats = model.quats.data.cpu().numpy()
+        for i in range(4):
+            map_to_tensors[f"rot_{i}"] = quats[:, i, None]
 
+    # post optimization, it is possible have NaN/Inf values in some attributes
+    # to ensure the exported ply file has finite values, we enforce finite filters.
+    select = np.ones(n, dtype=bool)
+    for k, t in map_to_tensors.items():
+        n_before = np.sum(select)
+        select = np.logical_and(select, np.isfinite(t).all(axis=-1))
+        n_after = np.sum(select)
+        if n_after < n_before:
+            CONSOLE.print(f"{n_before - n_after} NaN/Inf elements in {k}")
+    if np.sum(select) < n:
+        CONSOLE.print(f"values have NaN/Inf in map_to_tensors, only export {np.sum(select)}/{n}")
+        for k, t in map_to_tensors.items():
+            map_to_tensors[k] = map_to_tensors[k][select]
+        count = np.sum(select)
+    return count, map_to_tensors
 
-def get_crop_from_json(camera_json: Dict[str, Any]) -> Optional[CropData]:
-    """Load crop data from a camera path JSON
+def write_ply(filename, count, map_to_tensors):
+        
+    # Ensure count matches the length of all tensors
+    if not all(len(tensor) == count for tensor in map_to_tensors.values()):
+        raise ValueError("Count does not match the length of all tensors")
+    
+    # Type check for numpy arrays of type float or uint8 and non-empty
+    if not all(
+        isinstance(tensor, np.ndarray)
+        and (tensor.dtype.kind == "f" or tensor.dtype == np.uint8)
+        and tensor.size > 0
+        for tensor in map_to_tensors.values()
+    ):
+        raise ValueError("All tensors must be numpy arrays of float or uint8 type and not empty")
+    
+    with open(filename, "wb") as ply_file:
+        # Write PLY header
+        ply_file.write(b"ply\n")
+        ply_file.write(b"format binary_little_endian 1.0\n")
+        ply_file.write(f"element vertex {count}\n".encode())
 
-    args:
-        camera_json: camera path data
-    returns:
-        Crop data
-    """
-    if "crop" not in camera_json or camera_json["crop"] is None:
-        return None
-    bg_color = camera_json["crop"]["crop_bg_color"]
-    center = camera_json["crop"]["crop_center"]
-    scale = camera_json["crop"]["crop_scale"]
-    rot = (0.0, 0.0, 0.0) if "crop_rot" not in camera_json["crop"] else tuple(camera_json["crop"]["crop_rot"])
-    assert len(center) == 3
-    assert len(scale) == 3
-    assert len(rot) == 3
-    return CropData(
-        background_color=torch.Tensor(1.0, 1.0, 1.0), #torch.Tensor([bg_color["r"] / 255.0, bg_color["g"] / 255.0, bg_color["b"] / 255.0]),
-        obb=OrientedBox.from_params(center, rot, scale),
-    )
+        # Write properties, in order due to OrderedDict
+        for key, tensor in map_to_tensors.items():
+            data_type = "float" if tensor.dtype.kind == "f" else "uchar"
+            ply_file.write(f"property {data_type} {key}\n".encode())
+        ply_file.write(b"end_header\n")
+
+        # Write binary data
+        # Note: If this is a performance bottleneck consider using numpy.hstack for efficiency improvement
+        for i in range(count):
+            for tensor in map_to_tensors.values():
+                value = tensor[i]
+                if tensor.dtype.kind == "f":
+                    ply_file.write(np.float32(value).tobytes())
+                elif tensor.dtype == np.uint8:
+                    ply_file.write(value.tobytes())
 
 
 @dataclass
@@ -160,7 +210,7 @@ class DatasetRender(BaseRender):
     """Override path to the dataset."""
     downscale_factor: Optional[float] = None
     """Scaling factor to apply to the camera image resolution."""
-    split: Literal["train", "val", "test", "train+test"] = "test"
+    split: Literal["train", "val", "test", "train+test"] = "train" #hardcode both splits
     """Split to render."""
     rendered_output_names: Optional[List[str]] = field(default_factory=lambda: None)
     """Name of the renderer outputs to use. rgb, depth, raw-depth, gt-rgb etc. By default all outputs are rendered."""
@@ -197,6 +247,10 @@ class DatasetRender(BaseRender):
         data_manager_config = config.pipeline.datamanager
         assert isinstance(data_manager_config, (VanillaDataManagerConfig, FullImageDatamanagerConfig))
 
+        root_dir = ""
+        model = pipeline.model
+        cull_lst_master = torch.zeros(model.means.shape[0], dtype=torch.bool)
+
         for split in self.split.split("+"):
             datamanager: VanillaDataManager
             dataset: Dataset
@@ -220,7 +274,8 @@ class DatasetRender(BaseRender):
                 num_workers=datamanager.world_size * 4,
             )
             images_root = Path(os.path.commonpath(dataparser_outputs.image_filenames))
-            mask_root =  os.path.dirname(images_root)
+            root_dir =  os.path.dirname(images_root)
+            mask_root = root_dir
 
             fps = 24
             frames = len(dataset)
@@ -260,103 +315,20 @@ class DatasetRender(BaseRender):
                         pipeline.model.N = 1 #1080*1920*1000  #approx ray dataset size (train batch size x number of query iterations in uncertainty extraction step)
                         camera.camera_to_worlds = camera.camera_to_worlds.squeeze() # splatoff rasterizer requires cam2world.shape = [3,4]
                         bool_mask = get_mask(camera_idx, mask_root)
-                        temp = get_rasterizer_output(pipeline.model, camera, bool_mask, True)
-                        outputs = {"rgb": sort_package(temp, camera)["rgb"]}
-                        cam2worlds = torch.cat((camera.camera_to_worlds, torch.tensor([[0,0,0,1]], device="cuda")),dim=0).flatten().tolist()
-                        camera_path["camera_path"].append({"camera_to_world": cam2worlds, "fov": 50, "aspect": 1})
-            
-                    gt_batch = batch.copy()
-                    gt_batch["rgb"] = gt_batch.pop("image")
-                    all_outputs = (
-                        list(outputs.keys())
-                        + [f"raw-{x}" for x in outputs.keys()]
-                        + [f"gt-{x}" for x in gt_batch.keys()]
-                        + [f"raw-gt-{x}" for x in gt_batch.keys()]
-                    )
-                    rendered_output_names = self.rendered_output_names
-                    if rendered_output_names is None:
-                        rendered_output_names = ["gt-rgb"] + list(outputs.keys())
-                    for rendered_output_name in rendered_output_names:
-                        if rendered_output_name not in all_outputs:
-                            CONSOLE.rule("Error", style="red")
-                            CONSOLE.print(
-                                f"Could not find {rendered_output_name} in the model outputs", justify="center"
-                            )
-                            CONSOLE.print(
-                                f"Please set --rendered-output-name to one of: {all_outputs}", justify="center"
-                            )
-                            sys.exit(1)
+                        cull_lst = get_rasterizer_output(pipeline.model, camera, bool_mask, True)
+                        cull_lst_master |= cull_lst.to("cpu")
+                        print(f"{camera_idx}: {cull_lst_master.sum().item()}")
 
-                        is_raw = False
-                        is_depth = rendered_output_name.find("depth") != -1
-                        image_name = f"{camera_idx:05d}"
+        print(cull_lst_master.sum().item())
+        pipeline.model.means = model.means[cull_lst_master]
+        pipeline.model.scales = model.scales[cull_lst_master]
+        pipeline.model.quats = model.quats[cull_lst_master]
+        pipeline.model.features_dc = model.features_dc[cull_lst_master]
+        pipeline.model.features_rest = model.features_rest[cull_lst_master]
 
-                        # Try to get the original filename
-                        image_name = dataparser_outputs.image_filenames[camera_idx].relative_to(images_root)
-
-                        output_path = self.output_path / split / rendered_output_name / image_name
-                        output_path.parent.mkdir(exist_ok=True, parents=True)
-
-                        output_name = rendered_output_name
-                        if output_name.startswith("raw-"):
-                            output_name = output_name[4:]
-                            is_raw = True
-                            if output_name.startswith("gt-"):
-                                output_name = output_name[3:]
-                                output_image = gt_batch[output_name]
-                            else:
-                                output_image = outputs[output_name]
-                                if is_depth:
-                                    # Divide by the dataparser scale factor
-                                    output_image.div_(dataparser_outputs.dataparser_scale)
-                        else:
-                            if output_name.startswith("gt-"):
-                                output_name = output_name[3:]
-                                output_image = gt_batch[output_name]
-                            else:
-                                output_image = outputs[output_name]
-                        del output_name
-
-                        # Map to color spaces / numpy
-                        if is_raw:
-                            output_image = output_image.cpu().numpy()
-                        elif is_depth:
-                            output_image = (
-                                colormaps.apply_depth_colormap(
-                                    output_image,
-                                    accumulation=outputs["accumulation"],
-                                    near_plane=self.depth_near_plane,
-                                    far_plane=self.depth_far_plane,
-                                    colormap_options=self.colormap_options,
-                                )
-                                .cpu()
-                                .numpy()
-                            )
-                        else:
-                            output_image = (
-                                colormaps.apply_colormap(
-                                    image=output_image,
-                                    colormap_options=self.colormap_options,
-                                )
-                                .cpu()
-                                .numpy()
-                            )
-
-                        # Save to file
-                        if is_raw:
-                            with gzip.open(output_path.with_suffix(".npy.gz"), "wb") as f:
-                                np.save(f, output_image)
-                        elif self.image_format == "png":
-                            media.write_image(output_path.with_suffix(".png"), output_image, fmt="png")
-                        elif self.image_format == "jpeg":
-                            media.write_image(
-                                output_path.with_suffix(".jpg"), output_image, fmt="jpeg", quality=self.jpeg_quality
-                            )
-                        else:
-                            raise ValueError(f"Unknown image format {self.image_format}")
-                        
-                    with open("camera_path_from_training_images.json", "w") as file:
-                                json.dump(camera_path, file, indent=4)
+        filename = root_dir+"splat_mod.ply"
+        count, map_to_tensors = setup_write_ply(pipeline.model)
+        write_ply(filename, count, map_to_tensors)
 
         table = Table(
             title=None,
@@ -366,7 +338,7 @@ class DatasetRender(BaseRender):
         )
         for split in self.split.split("+"):
             table.add_row(f"Outputs {split}", str(self.output_path / split))
-        CONSOLE.print(Panel(table, title="[bold][green]:tada: Render on split {} Complete :tada:[/bold]", expand=False))
+        #CONSOLE.print(Panel(table, title="[bold][green]:tada: Cull on split {} Complete :tada:[/bold]", expand=False))
 
 
 Commands = tyro.conf.FlagConversionOff[

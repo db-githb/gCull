@@ -1,10 +1,11 @@
 #!/bin/bash
 
-ls mask_*.png \
-  | sort -r \
-  | while read f; do
-      # extract the 4-digit number and bump it
-      num="${f#mask_}"; num="${num%.png}"
-      new=$(printf "%04d" $((10#$num + 1)))
-      mv "$f" "mask_${new}.png"
-    done
+ls mask_*.png | while read f; do
+  num="${f#mask_}"
+  num="${num%.png}"
+
+  if [[ ${#num} -eq 5 && ${num:0:1} == "0" ]]; then
+    new_num="${num:1}"  # remove the first digit only
+    mv "$f" "mask_${new_num}.png"
+  fi
+done
