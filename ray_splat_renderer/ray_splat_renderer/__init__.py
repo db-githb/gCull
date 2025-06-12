@@ -55,7 +55,6 @@ def rasterize_gaussians(
     opacities,
     scales,
     rotations,
-    gaussian_index,
     cov3Ds_precomp,
     view2gaussian_precomp,
     raster_settings,
@@ -69,7 +68,6 @@ def rasterize_gaussians(
         opacities,
         scales,
         rotations,
-        gaussian_index,
         cov3Ds_precomp,
         view2gaussian_precomp,
         raster_settings,
@@ -90,7 +88,6 @@ class _RasterizeGaussians(torch.autograd.Function):
         opacities,
         scales,
         rotations,
-        gaussian_index,
         cov3Ds_precomp,
         view2gaussian_precomp,
         raster_settings,
@@ -105,7 +102,6 @@ class _RasterizeGaussians(torch.autograd.Function):
             opacities,
             scales,
             rotations,
-            gaussian_index,
             raster_settings.scale_modifier,
             cov3Ds_precomp,
             view2gaussian_precomp,
@@ -326,7 +322,7 @@ class GaussianRasterizer(nn.Module):
         super().__init__()
         self.raster_settings = raster_settings
 
-    def forward(self, bool_mask, means3D, means2D, opacities, shs = None, colors_precomp = None, scales = None, rotations = None, gaussian_index = None, cov3D_precomp = None, view2gaussian_precomp = None):
+    def forward(self, bool_mask, means3D, means2D, opacities, shs = None, colors_precomp = None, scales = None, rotations = None, cov3D_precomp = None, view2gaussian_precomp = None):
         
         raster_settings = self.raster_settings
 
@@ -362,7 +358,6 @@ class GaussianRasterizer(nn.Module):
             opacities,
             scales, 
             rotations,
-            gaussian_index,
             cov3D_precomp,
             view2gaussian_precomp,
             raster_settings, 

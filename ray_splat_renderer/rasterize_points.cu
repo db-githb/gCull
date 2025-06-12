@@ -49,7 +49,6 @@ RasterizeGaussiansCUDA(
     const torch::Tensor& opacity,
 	const torch::Tensor& scales,
 	const torch::Tensor& rotations,
-	const torch::Tensor& gaussian_index,
 	const float scale_modifier,
 	const torch::Tensor& cov3D_precomp,
 	const torch::Tensor& view2gaussian_precomp,
@@ -89,7 +88,7 @@ RasterizeGaussiansCUDA(
   std::function<char*(size_t)> geomFunc = resizeFunctional(geomBuffer);
   std::function<char*(size_t)> binningFunc = resizeFunctional(binningBuffer);
   std::function<char*(size_t)> imgFunc = resizeFunctional(imgBuffer);
-  
+
   int rendered = 0;
   if(P != 0)
   {
@@ -114,7 +113,6 @@ RasterizeGaussiansCUDA(
 		scales.contiguous().data_ptr<float>(),
 		scale_modifier,
 		rotations.contiguous().data_ptr<float>(),
-		gaussian_index.contiguous().data<int>(),
 		cov3D_precomp.contiguous().data<float>(), 
 		view2gaussian_precomp.contiguous().data<float>(), 
 		viewmatrix.contiguous().data<float>(), 

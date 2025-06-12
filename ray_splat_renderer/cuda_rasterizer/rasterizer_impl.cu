@@ -249,7 +249,6 @@ int CudaRasterizer::Rasterizer::forward(
 	const float *scales,
 	const float scale_modifier,
 	const float *rotations,
-	const int *gaussian_index,
 	const float *cov3D_precomp,
 	const float *view2gaussian_precomp,
 	const float *viewmatrix,
@@ -353,7 +352,7 @@ int CudaRasterizer::Rasterizer::forward(
 		tile_grid)
 		CHECK_CUDA(, debug)
 
-			int bit = getHigherMsb(tile_grid.x * tile_grid.y);
+	int bit = getHigherMsb(tile_grid.x * tile_grid.y);
 
 	// Sort complete list of (duplicated) Gaussian indices by keys
 	CHECK_CUDA(cub::DeviceRadixSort::SortPairs(
@@ -380,11 +379,11 @@ int CudaRasterizer::Rasterizer::forward(
 	// const float* cov3Ds = cov3D_precomp != nullptr ? cov3D_precomp : geomState.cov3D;
 	const float *view2gaussian = view2gaussian_precomp != nullptr ? view2gaussian_precomp : geomState.view2gaussian;
 	// const float* view2gaussian = view2gaussian_precomp;
-
+	printf("\nW: %d, H: %d\n", width, height);
+	//printf("\nBM: %d\n", bool_mask[3840*2160-1]);
 	bool* d_boolMask;
 	cudaMalloc(&d_boolMask, width * height * sizeof(bool));
 	cudaMemcpy(d_boolMask, bool_mask, width * height * sizeof(bool), cudaMemcpyHostToDevice);
-
 	CHECK_CUDA(FORWARD::skycull(
 		tile_grid, block,
 		width, height,
@@ -393,12 +392,11 @@ int CudaRasterizer::Rasterizer::forward(
 		imgState.ranges,
 		binningState.point_list,
 		view2gaussian,
-		(int *)gaussian_index,
 		(float3 *)scales,
 		geomState.conic_opacity,
 		output
 	), debug);
-	
+
 	cudaFree(d_boolMask);
 	return num_rendered;
 }

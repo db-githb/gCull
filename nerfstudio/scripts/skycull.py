@@ -299,7 +299,7 @@ class DatasetRender(BaseRender):
             }
             
             with Progress(
-                TextColumn(f":movie_camera: Rendering split {split} :movie_camera:"),
+                TextColumn(f"\u2702\ufe0f\u00A0 Culling split {split} \u2702\ufe0f\u00A0"),
                 BarColumn(),
                 TaskProgressColumn(
                     text_format="[progress.percentage]{task.completed}/{task.total:>.0f}({task.percentage:>3.1f}%)",
@@ -314,12 +314,12 @@ class DatasetRender(BaseRender):
                         #outputs = pipeline.model.get_outputs_for_camera(camera)         
                         pipeline.model.N = 1 #1080*1920*1000  #approx ray dataset size (train batch size x number of query iterations in uncertainty extraction step)
                         camera.camera_to_worlds = camera.camera_to_worlds.squeeze() # splatoff rasterizer requires cam2world.shape = [3,4]
-                        bool_mask = get_mask(camera_idx, mask_root)
+                        bool_mask = get_mask(camera_idx, mask_root).to(pipeline.model.device)
                         cull_lst = get_rasterizer_output(pipeline.model, camera, bool_mask, True)
                         cull_lst_master |= cull_lst.to("cpu")
-                        print(f"{camera_idx}: {cull_lst_master.sum().item()}")
+                        #print(f"{camera_idx}: {cull_lst_master.sum().item()}")
 
-        print(cull_lst_master.sum().item())
+        #print(cull_lst_master.sum().item())
         pipeline.model.means = model.means[cull_lst_master]
         pipeline.model.scales = model.scales[cull_lst_master]
         pipeline.model.quats = model.quats[cull_lst_master]
@@ -338,7 +338,7 @@ class DatasetRender(BaseRender):
         )
         for split in self.split.split("+"):
             table.add_row(f"Outputs {split}", str(self.output_path / split))
-        #CONSOLE.print(Panel(table, title="[bold][green]:tada: Cull on split {} Complete :tada:[/bold]", expand=False))
+        CONSOLE.print(Panel(table, title="[bold][green]:tada: Cull on split {} Complete :tada:[/bold]", expand=False))
 
 
 Commands = tyro.conf.FlagConversionOff[

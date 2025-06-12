@@ -60,7 +60,6 @@ namespace FORWARD
 		const uint2 *__restrict__ ranges,
 		const uint32_t *__restrict__ point_list,
 		const float *__restrict__ view2gaussian,
-		const int *__restrict__ gaussian_index,
 		const float3 *__restrict__ scales,
 		const float4 *__restrict__ conic_opacity,
 		bool* output

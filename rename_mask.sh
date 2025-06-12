@@ -9,3 +9,4 @@ ls mask_*.png | while read f; do
     mv "$f" "mask_${new_num}.png"
   fi
 done
+

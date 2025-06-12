@@ -335,7 +335,6 @@ def get_rasterizer_output(model, camera, bool_mask, renderer=False):
     scales =   get_scaling(model, filter_3D) # self.get_scaling_with_3D_filter(self) # mip-splatting 3D filter from GOF 
     rotation = get_rot_with_act_func(model) # self.quats 
     means2D = torch.zeros_like(opacity)
-    gaussian_index = torch.arange(model.means.shape[0], dtype=torch.int32, device="cuda")
 
     cull_lst, model.radii = rasterizer(
             bool_mask = bool_mask,
@@ -346,7 +345,6 @@ def get_rasterizer_output(model, camera, bool_mask, renderer=False):
             opacities = opacity,
             scales = scales,
             rotations = rotation, #self.quats,
-            gaussian_index = gaussian_index,
             cov3D_precomp = None,
             view2gaussian_precomp=None)
     
