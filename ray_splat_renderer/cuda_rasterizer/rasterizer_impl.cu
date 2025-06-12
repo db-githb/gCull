@@ -398,6 +398,7 @@ int CudaRasterizer::Rasterizer::forward(
 		geomState.conic_opacity,
 		output
 	), debug);
-
+	
+	cudaFree(d_boolMask);
 	return num_rendered;
 }

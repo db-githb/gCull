@@ -491,7 +491,7 @@ __global__ __launch_bounds__(BLOCK_X *BLOCK_Y)
 
 	int pixelIdx = x * width + y;
 	
-	if(!bool_mask[0]){
+	if(!bool_mask[pixelIdx]){
 		return;
 	}
 
