@@ -60,6 +60,7 @@ from nerfstudio.utils.scripts import run_command
 
 from PIL import Image
 from collections import OrderedDict
+import matplotlib.pyplot as plt
 
 sys.path.append('/home/damian/projects/skycull')
 from BayesRays.bayesrays.utils.utils import get_rasterizer_output, sort_package
@@ -214,13 +215,22 @@ class DatasetRender(BaseRender):
     """Split to render."""
     rendered_output_names: Optional[List[str]] = field(default_factory=lambda: None)
     """Name of the renderer outputs to use. rgb, depth, raw-depth, gt-rgb etc. By default all outputs are rendered."""
-
+    
     def main(self):
         config: TrainerConfig
+        def show_mask(bool_mask):
+            mask_np = bool_mask.cpu().numpy()   # convert to NumPy (H×W) array of True/False
+
+            plt.figure(figsize=(6,6))
+            plt.imshow(mask_np, cmap='gray', interpolation='nearest')
+            plt.title("Boolean Mask")
+            plt.axis('off') 
+            plt.show()
 
         def get_mask(camera_idx, mask_root):
             filepath = mask_root+"/masks/mask_"+str(camera_idx+1).zfill(4)+".png"
             bool_mask = torch.tensor(np.array(Image.open(filepath))) == 0 # convert to bool tensor for ease of CUDA hand-off where black = True / non-black = False
+            #show_mask(bool_mask)
             return bool_mask
 
         def update_config(config: TrainerConfig) -> TrainerConfig:
@@ -249,7 +259,8 @@ class DatasetRender(BaseRender):
 
         root_dir = ""
         model = pipeline.model
-        cull_lst_master = torch.zeros(model.means.shape[0], dtype=torch.bool)
+        total_gauss = model.means.shape[0]
+        cull_lst_master = torch.zeros(total_gauss, dtype=torch.bool)
 
         for split in self.split.split("+"):
             datamanager: VanillaDataManager
@@ -319,14 +330,15 @@ class DatasetRender(BaseRender):
                         cull_lst_master |= cull_lst.to("cpu")
                         #print(f"{camera_idx}: {cull_lst_master.sum().item()}")
 
-        print(cull_lst_master.sum().item())
+        print(f"Total culled: {cull_lst_master.sum().item()}/{total_gauss}")
+        keep = ~cull_lst_master
         with torch.no_grad():
-            pipeline.model.means.data = model.means[cull_lst_master].clone()
-            pipeline.model.opacities.data = model.opacities[cull_lst_master].clone()
-            pipeline.model.scales.data = model.scales[cull_lst_master].clone()
-            pipeline.model.quats.data = model.quats[cull_lst_master].clone()
-            pipeline.model.features_dc.data = model.features_dc[cull_lst_master].clone()
-            pipeline.model.features_rest.data = model.features_rest[cull_lst_master].clone()
+            pipeline.model.means.data = model.means[keep].clone()
+            pipeline.model.opacities.data = model.opacities[keep].clone()
+            pipeline.model.scales.data = model.scales[keep].clone()
+            pipeline.model.quats.data = model.quats[keep].clone()
+            pipeline.model.features_dc.data = model.features_dc[keep].clone()
+            pipeline.model.features_rest.data = model.features_rest[keep].clone()
 
         filename = root_dir+"splat_mod.ply"
         count, map_to_tensors = setup_write_ply(pipeline.model)
