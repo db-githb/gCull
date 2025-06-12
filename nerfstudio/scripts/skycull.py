@@ -64,8 +64,8 @@ from collections import OrderedDict
 sys.path.append('/home/damian/projects/skycull')
 from BayesRays.bayesrays.utils.utils import get_rasterizer_output, sort_package
 
-def setup_write_ply(pipeline):
-    model = pipeline.model
+def setup_write_ply(inModel):
+    model = inModel
     count = 0
     map_to_tensors = OrderedDict()
 
@@ -320,11 +320,13 @@ class DatasetRender(BaseRender):
                         #print(f"{camera_idx}: {cull_lst_master.sum().item()}")
 
         print(cull_lst_master.sum().item())
-        pipeline.model.means = model.means[cull_lst_master]
-        pipeline.model.scales = model.scales[cull_lst_master]
-        pipeline.model.quats = model.quats[cull_lst_master]
-        pipeline.model.features_dc = model.features_dc[cull_lst_master]
-        pipeline.model.features_rest = model.features_rest[cull_lst_master]
+        with torch.no_grad():
+            pipeline.model.means.data = model.means[cull_lst_master].clone()
+            pipeline.model.opacities.data = model.opacities[cull_lst_master].clone()
+            pipeline.model.scales.data = model.scales[cull_lst_master].clone()
+            pipeline.model.quats.data = model.quats[cull_lst_master].clone()
+            pipeline.model.features_dc.data = model.features_dc[cull_lst_master].clone()
+            pipeline.model.features_rest.data = model.features_rest[cull_lst_master].clone()
 
         filename = root_dir+"splat_mod.ply"
         count, map_to_tensors = setup_write_ply(pipeline.model)
