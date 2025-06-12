@@ -319,7 +319,7 @@ class DatasetRender(BaseRender):
                         cull_lst_master |= cull_lst.to("cpu")
                         #print(f"{camera_idx}: {cull_lst_master.sum().item()}")
 
-        #print(cull_lst_master.sum().item())
+        print(cull_lst_master.sum().item())
         pipeline.model.means = model.means[cull_lst_master]
         pipeline.model.scales = model.scales[cull_lst_master]
         pipeline.model.quats = model.quats[cull_lst_master]

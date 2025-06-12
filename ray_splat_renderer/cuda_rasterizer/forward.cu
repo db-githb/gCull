@@ -484,17 +484,13 @@ __global__ __launch_bounds__(BLOCK_X *BLOCK_Y)
 	auto block = cg::this_thread_block();
 	uint32_t horizontal_blocks = (width + BLOCK_X - 1) / BLOCK_X;
 	// compute pixel coords
-	int x = blockIdx.x * blockDim.x + threadIdx.x;
-	int y = blockIdx.y * blockDim.y + threadIdx.y;
-	if (x >= width || y >= height) return;
+	uint2 pix_min = {block.group_index().x * BLOCK_X, block.group_index().y * BLOCK_Y};
+	uint2 pix_max = {min(pix_min.x + BLOCK_X, width), min(pix_min.y + BLOCK_Y, height)};
+	uint2 pix = {pix_min.x + block.thread_index().x, pix_min.y + block.thread_index().y};
+	uint32_t pix_id = width * pix.y + pix.x;
+	if (pix.x >= width || pix.y >= height) return;
 
-	int pixelIdx = x * width + y;
-	
-	if(!bool_mask[pixelIdx]){
-		return;
-	}
-
-	float2 pixf = {(float)x + 0.5, (float)y + 0.5}; 
+	float2 pixf = {(float)pix.x + 0.5, (float)pix.y + 0.5}; 
 	float2 ray = {(pixf.x - width / 2.) / focal_x, (pixf.y - height / 2.) / focal_y};
 
 	// Load start/end range of IDs to process in bit sorted list.
@@ -508,7 +504,7 @@ __global__ __launch_bounds__(BLOCK_X *BLOCK_Y)
 	__shared__ float collected_view2gaussian[BLOCK_SIZE * 16]; // TODO we only need 12
 	__shared__ float3 collected_scale[BLOCK_SIZE];
 	
-	bool inside = x < width && y < height;
+	bool inside = pix.x < width && pix.y < height;
 	bool done = !inside; 
 
 	// Iterate over batches until all done or range is complete
@@ -531,61 +527,65 @@ __global__ __launch_bounds__(BLOCK_X *BLOCK_Y)
 			collected_scale[block.thread_rank()] = scales[coll_id];
 		}
 		block.sync();
-		// Iterate over current batch
-		for (int j = 0; j < min(BLOCK_SIZE, toDo); j++){
-			int gIdx = collected_id[j];
-
-			// check if gaussian has already been processed
-			if(output[gIdx]){
-				continue;
-			}
-
-			// Resample using conic matrix (cf. "Surface
-			// Splatting" by Zwicker et al., 2001)
-			float4 con_o = collected_conic_opacity[j];
-			float *view2gaussian_j = collected_view2gaussian + j * 16;
-
-			float3 scale_j = collected_scale[j];
-			float3 ray_point = {ray.x, ray.y, 1.0};
-
-			// EQ.2 from GOF paper - camera pos is at zero in view space/coordinate system
-			float3 cam_pos_local = {view2gaussian_j[12], view2gaussian_j[13], view2gaussian_j[14]};									// translate camera center to gaussian's local coordinate system
-			double3 cam_pos_local_scaled = {cam_pos_local.x / scale_j.x, cam_pos_local.y / scale_j.y, cam_pos_local.z / scale_j.z}; // scale cam_pos_local
-
-			// EQ.3 from GOF paper
-			float3 ray_local = transformPoint4x3_without_t(ray_point, view2gaussian_j); // rotate ray to gaussian's local coordinate system
-
-			double3 ray_local_scaled = {ray_local.x / scale_j.x, ray_local.y / scale_j.y, ray_local.z / scale_j.z}; // scale ray_local
-
-			// compute the minimal value
-			// use AA, BB, CC so that the name is unique
-			double AA = ray_local_scaled.x * ray_local_scaled.x + ray_local_scaled.y * ray_local_scaled.y + ray_local_scaled.z * ray_local_scaled.z;
-			double BB = 2 * (ray_local_scaled.x * cam_pos_local_scaled.x + ray_local_scaled.y * cam_pos_local_scaled.y + ray_local_scaled.z * cam_pos_local_scaled.z);
-			double CC = cam_pos_local_scaled.x * cam_pos_local_scaled.x + cam_pos_local_scaled.y * cam_pos_local_scaled.y + cam_pos_local_scaled.z * cam_pos_local_scaled.z;
-
-			// t is the depth of the gaussian
-			float t = -BB / (2 * AA);
-
-			if (t <= NEAR_PLANE)
+		if(inside && bool_mask[pix_id]){
+			// Iterate over current batch
+			for (int j = 0; j < min(BLOCK_SIZE, toDo); j++)
 			{
-				continue;
-			}
-			const float scale = 1.0f / sqrt(AA + 1e-7);
-			double min_value = -(BB / AA) * (BB / 4.) + CC;
-			float power = -0.5f * min_value;
-			if (power > 0.0f)
-			{
-				power = 0.0f;
-			}
+				int gIdx = collected_id[j];
 
-			float alpha = min(0.99f, con_o.w * exp(power));
-			if (alpha < 1.0f / 255.0f)
-			{
-				continue;
+				// check if gaussian has already been processed
+				if (output[gIdx])
+				{
+					continue;
+				}
+
+				// Resample using conic matrix (cf. "Surface
+				// Splatting" by Zwicker et al., 2001)
+				float4 con_o = collected_conic_opacity[j];
+				float *view2gaussian_j = collected_view2gaussian + j * 16;
+
+				float3 scale_j = collected_scale[j];
+				float3 ray_point = {ray.x, ray.y, 1.0};
+
+				// EQ.2 from GOF paper - camera pos is at zero in view space/coordinate system
+				float3 cam_pos_local = {view2gaussian_j[12], view2gaussian_j[13], view2gaussian_j[14]};									// translate camera center to gaussian's local coordinate system
+				double3 cam_pos_local_scaled = {cam_pos_local.x / scale_j.x, cam_pos_local.y / scale_j.y, cam_pos_local.z / scale_j.z}; // scale cam_pos_local
+
+				// EQ.3 from GOF paper
+				float3 ray_local = transformPoint4x3_without_t(ray_point, view2gaussian_j); // rotate ray to gaussian's local coordinate system
+
+				double3 ray_local_scaled = {ray_local.x / scale_j.x, ray_local.y / scale_j.y, ray_local.z / scale_j.z}; // scale ray_local
+
+				// compute the minimal value
+				// use AA, BB, CC so that the name is unique
+				double AA = ray_local_scaled.x * ray_local_scaled.x + ray_local_scaled.y * ray_local_scaled.y + ray_local_scaled.z * ray_local_scaled.z;
+				double BB = 2 * (ray_local_scaled.x * cam_pos_local_scaled.x + ray_local_scaled.y * cam_pos_local_scaled.y + ray_local_scaled.z * cam_pos_local_scaled.z);
+				double CC = cam_pos_local_scaled.x * cam_pos_local_scaled.x + cam_pos_local_scaled.y * cam_pos_local_scaled.y + cam_pos_local_scaled.z * cam_pos_local_scaled.z;
+
+				// t is the depth of the gaussian
+				float t = -BB / (2 * AA);
+
+				if (t <= NEAR_PLANE)
+				{
+					continue;
+				}
+				const float scale = 1.0f / sqrt(AA + 1e-7);
+				double min_value = -(BB / AA) * (BB / 4.) + CC;
+				float power = -0.5f * min_value;
+				if (power > 0.0f)
+				{
+					power = 0.0f;
+				}
+
+				float alpha = min(0.99f, con_o.w * exp(power));
+				if (alpha < 1.0f / 255.0f)
+				{
+					continue;
+				}
+
+				// tag bool_mask gaussians
+				output[gIdx] = true;
 			}
-			
-			// tag bool_mask gaussians
-			output[gIdx] = true;
 		}
 	}
 }

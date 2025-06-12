@@ -379,7 +379,7 @@ int CudaRasterizer::Rasterizer::forward(
 	// const float* cov3Ds = cov3D_precomp != nullptr ? cov3D_precomp : geomState.cov3D;
 	const float *view2gaussian = view2gaussian_precomp != nullptr ? view2gaussian_precomp : geomState.view2gaussian;
 	// const float* view2gaussian = view2gaussian_precomp;
-	printf("\nW: %d, H: %d\n", width, height);
+	//printf("\nW: %d, H: %d\n", width, height);
 	//printf("\nBM: %d\n", bool_mask[3840*2160-1]);
 	bool* d_boolMask;
 	cudaMalloc(&d_boolMask, width * height * sizeof(bool));
