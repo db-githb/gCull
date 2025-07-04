@@ -63,7 +63,7 @@ from collections import OrderedDict
 import matplotlib.pyplot as plt
 
 sys.path.append('/home/damian/projects/skycull')
-from BayesRays.bayesrays.utils.utils import get_rasterizer_output, sort_package
+from utils import get_rasterizer_output, sort_package
 
 def setup_write_ply(inModel):
     model = inModel

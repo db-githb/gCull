@@ -323,7 +323,7 @@ def get_rasterizer_output(model, camera, bool_mask, renderer=False):
 
     means3D =  model.means
 
-    filter_3D = compute_3D_filter(model, camera,.01, renderer) #model.filter3D_scale, renderer) # compute_3D_filter per camera (GOF does it for each camera at the beginning of training)
+    filter_3D = compute_3D_filter(model, camera,.2, renderer) #model.filter3D_scale, renderer) # compute_3D_filter per camera (GOF does it for each camera at the beginning of training)
     opacity = get_opacity(model, filter_3D) 
 
     #if model.filter3D:
@@ -336,7 +336,7 @@ def get_rasterizer_output(model, camera, bool_mask, renderer=False):
     rotation = get_rot_with_act_func(model) # self.quats 
     means2D = torch.zeros_like(opacity)
 
-    cull_lst, model.radii = rasterizer(
+    cull_lst = rasterizer(
             bool_mask = bool_mask,
             means3D = means3D,
             means2D = means2D, # not used in gof (legacy param from 3DGS)

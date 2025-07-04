@@ -28,7 +28,6 @@ namespace cg = cooperative_groups;
 
 #include "auxiliary.h"
 #include "forward.h"
-#include "backward.h"
 
 // Helper function to find the next-highest bit of the MSB
 // on the CPU.
@@ -396,7 +395,7 @@ int CudaRasterizer::Rasterizer::forward(
 		geomState.conic_opacity,
 		output
 	), debug);
-
+	cudaDeviceSynchronize();
 	cudaFree(d_boolMask);
 	return num_rendered;
 }
