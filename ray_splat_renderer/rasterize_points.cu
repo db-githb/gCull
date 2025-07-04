@@ -33,12 +33,6 @@ std::function<char*(size_t N)> resizeFunctional(torch::Tensor& t) {
     };
     return lambda;
 }
-int TestCUDA(const int x){
-	int y = x;
-	int* ptr_y = &y;
-	CudaRasterizer::Rasterizer::test(ptr_y);
-	return y;
-}
 
 std::tuple<int, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
 RasterizeGaussiansCUDA(

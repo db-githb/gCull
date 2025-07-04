@@ -31,8 +31,6 @@ from nerfstudio.cameras.cameras import Cameras
 from nerfstudio.cameras.rays import RayBundle
 from nerfstudio.configs.base_config import InstantiateConfig
 from nerfstudio.configs.config_utils import to_immutable_dict
-from nerfstudio.data.scene_box import OrientedBox, SceneBox
-from nerfstudio.engine.callbacks import TrainingCallback, TrainingCallbackAttributes
 from nerfstudio.model_components.scene_colliders import NearFarCollider
 
 
@@ -70,14 +68,11 @@ class Model(nn.Module):
     def __init__(
         self,
         config: ModelConfig,
-        scene_box: SceneBox,
         num_train_data: int,
         **kwargs,
     ) -> None:
         super().__init__()
         self.config = config
-        self.scene_box = scene_box
-        self.render_aabb: Optional[SceneBox] = None  # the box that we want to render - should be a subset of scene_box
         self.num_train_data = num_train_data
         self.kwargs = kwargs
         self.collider = None
@@ -91,12 +86,6 @@ class Model(nn.Module):
     def device(self):
         """Returns the device that the model is on."""
         return self.device_indicator_param.device
-
-    def get_training_callbacks(
-        self, training_callback_attributes: TrainingCallbackAttributes
-    ) -> List[TrainingCallback]:
-        """Returns a list of callbacks that run functions at the specified training iterations."""
-        return []
 
     def populate_modules(self):
         """Set the necessary modules to get the network working."""
@@ -163,7 +152,7 @@ class Model(nn.Module):
         """
 
     @torch.no_grad()
-    def get_outputs_for_camera(self, camera: Cameras, obb_box: Optional[OrientedBox] = None) -> Dict[str, torch.Tensor]:
+    def get_outputs_for_camera(self, camera: Cameras) -> Dict[str, torch.Tensor]:
         """Takes in a camera, generates the raybundle, and computes the output of the model.
         Assumes a ray-based model.
 
@@ -171,7 +160,7 @@ class Model(nn.Module):
             camera: generates raybundle
         """
         return self.get_outputs_for_camera_ray_bundle(
-            camera.generate_rays(camera_indices=0, keep_shape=True, obb_box=obb_box)
+            camera.generate_rays(camera_indices=0, keep_shape=True)
         )
 
     @torch.no_grad()

@@ -17,47 +17,27 @@
 render.py
 """
 from __future__ import annotations
-
-import gzip
-import json
 import os
-import shutil
-import struct
 import sys
-from contextlib import ExitStack, contextmanager
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import List, Literal, Optional
 
-import mediapy as media
 import numpy as np
 import torch
 import tyro
-import viser.transforms as tf
-from jaxtyping import Float
 from rich import box, style
 from rich.panel import Panel
 from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 from rich.table import Table
-from torch import Tensor
 from typing_extensions import Annotated
-
-from nerfstudio.cameras.camera_paths import get_interpolated_camera_path, get_path_from_json, get_spiral_path
 from nerfstudio.data.datamanagers.base_datamanager import VanillaDataManager, VanillaDataManagerConfig
 from nerfstudio.data.datamanagers.full_images_datamanager import FullImageDatamanagerConfig
-from nerfstudio.data.datamanagers.parallel_datamanager import ParallelDataManager
-from nerfstudio.data.datamanagers.random_cameras_datamanager import RandomCamerasDataManager
 from nerfstudio.data.datasets.base_dataset import Dataset
-from nerfstudio.data.scene_box import OrientedBox
 from nerfstudio.data.utils.dataloaders import FixedIndicesEvalDataloader
-from nerfstudio.engine.trainer import TrainerConfig
-from nerfstudio.model_components import renderers
-from nerfstudio.pipelines.base_pipeline import Pipeline
-from nerfstudio.utils import colormaps, install_checks
 from nerfstudio.utils.eval_utils import eval_setup
 from nerfstudio.utils.rich_utils import CONSOLE, ItersPerSecColumn
-from nerfstudio.utils.scripts import run_command
-
 from PIL import Image
 from collections import OrderedDict
 import matplotlib.pyplot as plt
@@ -179,8 +159,6 @@ class BaseRender:
     """Closest depth to consider when using the colormap for depth. If None, use min value."""
     depth_far_plane: Optional[float] = None
     """Furthest depth to consider when using the colormap for depth. If None, use max value."""
-    colormap_options: colormaps.ColormapOptions = colormaps.ColormapOptions()
-    """Colormap options."""
     render_nearest_camera: bool = False
     """Whether to render the nearest training camera to the rendered camera."""
     check_occlusions: bool = False

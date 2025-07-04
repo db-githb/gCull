@@ -324,9 +324,7 @@ class Cameras(TensorDataclass):
         camera_opt_to_camera: Optional[Float[Tensor, "*num_rays 3 4"]] = None,
         distortion_params_delta: Optional[Float[Tensor, "*num_rays 6"]] = None,
         keep_shape: Optional[bool] = None,
-        disable_distortion: bool = False,
-        aabb_box: Optional[SceneBox] = None,
-        obb_box: Optional[OrientedBox] = None,
+        disable_distortion: bool = False
     ) -> RayBundle:
         """Generates rays for the given camera indices.
 
@@ -470,31 +468,6 @@ class Cameras(TensorDataclass):
         # If we have mandated that we don't keep the shape, then we flatten
         if keep_shape is False:
             raybundle = raybundle.flatten()
-
-        if aabb_box is not None or obb_box is not None:
-            with torch.no_grad():
-                rays_o = raybundle.origins.contiguous()
-                rays_d = raybundle.directions.contiguous()
-
-                shape = rays_o.shape
-
-                rays_o = rays_o.reshape((-1, 3))
-                rays_d = rays_d.reshape((-1, 3))
-
-                if aabb_box is not None:
-                    tensor_aabb = Parameter(aabb_box.aabb.flatten(), requires_grad=False)
-                    tensor_aabb = tensor_aabb.to(rays_o.device)
-                    t_min, t_max = nerfstudio.utils.math.intersect_aabb(rays_o, rays_d, tensor_aabb)
-                elif obb_box is not None:
-                    t_min, t_max = nerfstudio.utils.math.intersect_obb(rays_o, rays_d, obb_box)
-                else:
-                    assert False
-
-                t_min = t_min.reshape([shape[0], shape[1], 1])
-                t_max = t_max.reshape([shape[0], shape[1], 1])
-
-                raybundle.nears = t_min
-                raybundle.fars = t_max
 
         # TODO: We should have to squeeze the last dimension here if we started with zero batch dims, but never have to,
         # so there might be a rogue squeeze happening somewhere, and this may cause some unintended behaviour

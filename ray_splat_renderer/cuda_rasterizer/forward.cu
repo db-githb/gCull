@@ -611,21 +611,3 @@ void FORWARD::skycull(
 		conic_opacity,
 		output);
 }
-
-template <uint32_t CHANNELS>
-__global__ void __launch_bounds__(BLOCK_X *BLOCK_Y)
-	testCUDA(int *y)
-{
-	*y += 1;
-	printf("AFTER testCUDA y: %d", *y);
-}
-
-#define COMMA ,
-void FORWARD::test(int *y)
-{
-	int *d_y;
-	cudaMalloc(&d_y, sizeof(int));
-	cudaMemcpy(d_y, y, sizeof(int), cudaMemcpyHostToDevice);
-	CHECK_CUDA((testCUDA<NUM_CHANNELS><<<1, 1>>>(d_y)), true);
-	cudaMemcpy(y, d_y, sizeof(int), cudaMemcpyDeviceToHost);
-}

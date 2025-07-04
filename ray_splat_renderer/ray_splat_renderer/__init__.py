@@ -24,19 +24,6 @@ import math
 #from scene.gaussian_model import GaussianModel
 #from utils.sh_utils import eval_sh
 
-
-class Test():
-    def test(self, x):
-        return _Test.apply(x)
-
-class _Test(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, x):
-        args = (x,)
-        ctx.save_for_backward(x)
-        y = _C.test(*args)
-        return y
-
 def cpu_deep_copy_tuple(input_tuple):
     copied_tensors = [item.cpu().clone() if isinstance(item, torch.Tensor) else item for item in input_tuple]
     return tuple(copied_tensors)

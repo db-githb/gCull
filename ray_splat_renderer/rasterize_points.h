@@ -15,8 +15,6 @@
 #include <tuple>
 #include <string>
 
-int TestCUDA(const int x);
-
 std::tuple<int, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
 RasterizeGaussiansCUDA(
 	const torch::Tensor& background,

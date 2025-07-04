@@ -50,7 +50,6 @@ namespace FORWARD
 		uint32_t* tiles_touched,
 		bool prefiltered, float* area);
 	
-	void test(int* y);
 
 	void skycull(
 		const dim3 tile_bounds, dim3 block,

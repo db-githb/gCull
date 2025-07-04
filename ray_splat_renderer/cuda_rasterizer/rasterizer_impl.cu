@@ -226,11 +226,6 @@ CudaRasterizer::BinningState CudaRasterizer::BinningState::fromChunk(char *&chun
 	return binning;
 }
 
-void CudaRasterizer::Rasterizer::test(int *y)
-{
-	FORWARD::test(y);
-}
-
 // Forward rendering procedure for differentiable rasterization
 // of Gaussians.
 int CudaRasterizer::Rasterizer::forward(

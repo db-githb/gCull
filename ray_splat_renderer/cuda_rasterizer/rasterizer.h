@@ -20,8 +20,6 @@ namespace CudaRasterizer
 	class Rasterizer
 	{
 	public:
-
-		static void test(int* y);
 		
 		static void skycull(
 			const dim3 tile_bounds, dim3 block,
