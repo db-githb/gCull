@@ -25,13 +25,9 @@ import cv2
 import torch
 from jaxtyping import Float, Int, Shaped
 from torch import Tensor
-from torch.nn import Parameter
 
-import nerfstudio.utils.math
-import nerfstudio.utils.poses as pose_utils
 from nerfstudio.cameras import camera_utils
 from nerfstudio.cameras.rays import RayBundle
-from nerfstudio.data.scene_box import OrientedBox, SceneBox
 from nerfstudio.utils.tensor_dataclass import TensorDataclass
 
 TORCH_DEVICE = Union[torch.device, str]

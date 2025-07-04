@@ -41,9 +41,7 @@ from nerfstudio.utils.rich_utils import CONSOLE, ItersPerSecColumn
 from PIL import Image
 from collections import OrderedDict
 import matplotlib.pyplot as plt
-
-sys.path.append('/home/damian/projects/skycull')
-from utils import get_rasterizer_output, sort_package
+from utils import get_cull_list
 
 def setup_write_ply(inModel):
     model = inModel
@@ -187,15 +185,10 @@ class DatasetRender(BaseRender):
     """Path to output video file."""
     data: Optional[Path] = None
     """Override path to the dataset."""
-    downscale_factor: Optional[float] = None
-    """Scaling factor to apply to the camera image resolution."""
     split: Literal["train", "val", "test", "train+test"] = "train" #hardcode both splits
     """Split to render."""
-    rendered_output_names: Optional[List[str]] = field(default_factory=lambda: None)
-    """Name of the renderer outputs to use. rgb, depth, raw-depth, gt-rgb etc. By default all outputs are rendered."""
     
     def main(self):
-        config: TrainerConfig
         def show_mask(bool_mask):
             mask_np = bool_mask.cpu().numpy()   # convert to NumPy (H×W) array of True/False
 
@@ -211,7 +204,7 @@ class DatasetRender(BaseRender):
             #show_mask(bool_mask)
             return bool_mask
 
-        def update_config(config: TrainerConfig) -> TrainerConfig:
+        def update_config(config):
             data_manager_config = config.pipeline.datamanager
             assert isinstance(data_manager_config, (VanillaDataManagerConfig, FullImageDatamanagerConfig))
             data_manager_config.eval_num_images_to_sample_from = -1
@@ -265,27 +258,6 @@ class DatasetRender(BaseRender):
             images_root = Path(os.path.commonpath(dataparser_outputs.image_filenames))
             root_dir =  os.path.dirname(images_root)
             mask_root = root_dir
-
-            fps = 24
-            frames = len(dataset)
-            camera_path = {
-                            "keyframes": [],
-                            "camera_type": "perspective",
-                            "render_height" : dataloader.cameras[0].height.item(),
-                            "render_width" : dataloader.cameras[0].width.item(),
-                            "camera_intrinsics":{
-                                "fl_x" : dataloader.cameras[0].fx.item(),
-                                "fl_y" : dataloader.cameras[0].fy.item(),
-                                "cx" : dataloader.cameras[0].cx.item(),
-                                "cy" : dataloader.cameras[0].cy.item()
-                            },
-                            "camera_path" : [],
-                            "fps" : fps,
-                            "seconds" : float(frames)/float(fps),
-                            "smoothness_value" : 0.5,
-                            "is_cycle": False,
-                            "crop" : None
-            }
             
             with Progress(
                 TextColumn(f"\u2702\ufe0f\u00A0 Culling split {split} \u2702\ufe0f\u00A0"),
@@ -300,11 +272,9 @@ class DatasetRender(BaseRender):
             ) as progress:
                 for camera_idx, (camera, batch) in enumerate(progress.track(dataloader, total=len(dataset))):
                     with torch.no_grad():
-                        #outputs = pipeline.model.get_outputs_for_camera(camera)         
-                        pipeline.model.N = 1 #1080*1920*1000  #approx ray dataset size (train batch size x number of query iterations in uncertainty extraction step)
                         camera.camera_to_worlds = camera.camera_to_worlds.squeeze() # splatoff rasterizer requires cam2world.shape = [3,4]
                         bool_mask = get_mask(camera_idx, mask_root).to(pipeline.model.device)
-                        cull_lst = get_rasterizer_output(pipeline.model, camera, bool_mask, True)
+                        cull_lst = get_cull_list(model, camera, bool_mask)
                         cull_lst_master |= cull_lst.to("cpu")
                         #print(f"{camera_idx}: {cull_lst_master.sum().item()}")
 
