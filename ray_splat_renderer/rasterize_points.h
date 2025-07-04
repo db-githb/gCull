@@ -16,7 +16,7 @@
 #include <string>
 
 std::tuple<int, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
-RasterizeGaussiansCUDA(
+CullGaussiansCUDA(
 	const torch::Tensor& background,
 	const torch::Tensor& bool_mask,
 	const torch::Tensor& means3D,

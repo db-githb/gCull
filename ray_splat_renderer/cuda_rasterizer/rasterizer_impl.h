@@ -16,7 +16,7 @@
 #include "rasterizer.h"
 #include <cuda_runtime_api.h>
 
-namespace CudaRasterizer
+namespace CudaCuller
 {
 	template <typename T>
 	static void obtain(char*& chunk, T*& ptr, std::size_t count, std::size_t alignment)

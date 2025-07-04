@@ -35,7 +35,7 @@ std::function<char*(size_t N)> resizeFunctional(torch::Tensor& t) {
 }
 
 std::tuple<int, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
-RasterizeGaussiansCUDA(
+CullGaussiansCUDA(
 	const torch::Tensor& background,
 	const torch::Tensor& bool_mask,
 	const torch::Tensor& means3D,
@@ -92,7 +92,7 @@ RasterizeGaussiansCUDA(
 		M = sh.size(1);
       }
 
-	  rendered = CudaRasterizer::Rasterizer::forward(
+	  rendered = CudaCuller::Culler::forward(
 	    geomFunc,
 		binningFunc,
 		imgFunc,

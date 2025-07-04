@@ -169,7 +169,7 @@ __global__ void identifyTileRanges(int L, uint64_t *point_list_keys, uint2 *rang
 		ranges[currtile].y = L;
 }
 
-CudaRasterizer::GeometryState CudaRasterizer::GeometryState::fromChunk(char *&chunk, size_t P)
+CudaCuller::GeometryState CudaCuller::GeometryState::fromChunk(char *&chunk, size_t P)
 {
 	GeometryState geom;
 	obtain(chunk, geom.depths, P, 128);
@@ -187,7 +187,7 @@ CudaRasterizer::GeometryState CudaRasterizer::GeometryState::fromChunk(char *&ch
 	return geom;
 }
 
-CudaRasterizer::PointState CudaRasterizer::PointState::fromChunk(char *&chunk, size_t P)
+CudaCuller::PointState CudaCuller::PointState::fromChunk(char *&chunk, size_t P)
 {
 	PointState geom;
 	obtain(chunk, geom.depths, P, 128);
@@ -199,7 +199,7 @@ CudaRasterizer::PointState CudaRasterizer::PointState::fromChunk(char *&chunk, s
 	return geom;
 }
 
-CudaRasterizer::ImageState CudaRasterizer::ImageState::fromChunk(char *&chunk, size_t N)
+CudaCuller::ImageState CudaCuller::ImageState::fromChunk(char *&chunk, size_t N)
 {
 	ImageState img;
 	obtain(chunk, img.accum_alpha, N * 4, 128);
@@ -211,7 +211,7 @@ CudaRasterizer::ImageState CudaRasterizer::ImageState::fromChunk(char *&chunk, s
 	return img;
 }
 
-CudaRasterizer::BinningState CudaRasterizer::BinningState::fromChunk(char *&chunk, size_t P)
+CudaCuller::BinningState CudaCuller::BinningState::fromChunk(char *&chunk, size_t P)
 {
 	BinningState binning;
 	obtain(chunk, binning.point_list, P, 128);
@@ -228,7 +228,7 @@ CudaRasterizer::BinningState CudaRasterizer::BinningState::fromChunk(char *&chun
 
 // Forward rendering procedure for differentiable rasterization
 // of Gaussians.
-int CudaRasterizer::Rasterizer::forward(
+int CudaCuller::Culler::forward(
 	std::function<char *(size_t)> geometryBuffer,
 	std::function<char *(size_t)> binningBuffer,
 	std::function<char *(size_t)> imageBuffer,
@@ -378,7 +378,7 @@ int CudaRasterizer::Rasterizer::forward(
 	bool* d_boolMask;
 	cudaMalloc(&d_boolMask, width * height * sizeof(bool));
 	cudaMemcpy(d_boolMask, bool_mask, width * height * sizeof(bool), cudaMemcpyHostToDevice);
-	CHECK_CUDA(FORWARD::skycull(
+	CHECK_CUDA(FORWARD::gCull(
 		tile_grid, block,
 		width, height,
 		d_boolMask,

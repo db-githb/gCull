@@ -1,5 +1,5 @@
 import torch
-from ray_splat_renderer import GaussianRasterizationSettings, GaussianRasterizer
+from ray_splat_renderer import GaussianCullSettings, GaussianCuller
 
 # taken from gaussian-opacity-fields
 def compute_3D_filter(model, camera, s):
@@ -175,7 +175,7 @@ def get_cull_list(model, camera, bool_mask):
     height =int(camera.height.item())*scale_img
     width = int(camera.width.item())*scale_img
 
-    raster_settings = GaussianRasterizationSettings(
+    cull_settings = GaussianCullSettings(
         image_height= height,
         image_width= width,
         tanfovx=  tanHalfFovX, # actually using the half angle i.e. tan half fov
@@ -191,7 +191,7 @@ def get_cull_list(model, camera, bool_mask):
         prefiltered=False, # keep prefiltered as false (from gauss-op-field)
         debug=True)
     
-    rasterizer = GaussianRasterizer(raster_settings=raster_settings)
+    gCuller = GaussianCuller(cull_settings=cull_settings)
 
     means3D =  model.means
 
@@ -200,12 +200,11 @@ def get_cull_list(model, camera, bool_mask):
     
     scales =   get_scaling(model, filter_3D) # self.get_scaling_with_3D_filter(self) # mip-splatting 3D filter from GOF 
     rotation = get_rot_with_act_func(model) # self.quats 
-    means2D = torch.zeros_like(opacity)
 
-    cull_lst = rasterizer(
+
+    cull_lst = gCuller(
             bool_mask = bool_mask,
             means3D = means3D,
-            means2D = means2D, # not used in gof (legacy param from 3DGS)
             shs = torch.cat((model.features_dc.unsqueeze(1), model.features_rest), dim=1),
             colors_precomp = None,
             opacities = opacity,

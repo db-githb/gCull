@@ -9,18 +9,11 @@
 # For inquiries contact  george.drettakis@inria.fr
 #
 
-from typing import NamedTuple, Optional
-from jaxtyping import Float, Int
-
+from typing import NamedTuple
 import torch.nn as nn
 import torch
-from torch import Tensor
-from torch.autograd import Function
-
 from . import _C
-from .utils import bin_and_sort_gaussians, compute_cumulative_intersects
 
-import math
 #from scene.gaussian_model import GaussianModel
 #from utils.sh_utils import eval_sh
 
@@ -28,10 +21,9 @@ def cpu_deep_copy_tuple(input_tuple):
     copied_tensors = [item.cpu().clone() if isinstance(item, torch.Tensor) else item for item in input_tuple]
     return tuple(copied_tensors)
 
-def rasterize_gaussians(
+def cull_gaussians(
     bool_mask,
     means3D,
-    means2D,
     sh,
     colors_precomp,
     opacities,
@@ -41,10 +33,9 @@ def rasterize_gaussians(
     view2gaussian_precomp,
     raster_settings,
 ):
-    return _RasterizeGaussians.apply(
+    return _CullGaussians.apply(
         bool_mask,
         means3D,
-        means2D,
         sh,
         colors_precomp,
         opacities,
@@ -55,7 +46,7 @@ def rasterize_gaussians(
         raster_settings,
     )
 
-class _RasterizeGaussians(torch.autograd.Function):
+class _CullGaussians(torch.autograd.Function):
 
     grad_offsets = torch.tensor([])
 
@@ -64,7 +55,6 @@ class _RasterizeGaussians(torch.autograd.Function):
         ctx,
         bool_mask,
         means3D,
-        means2D,
         sh,
         colors_precomp,
         opacities,
@@ -102,17 +92,17 @@ class _RasterizeGaussians(torch.autograd.Function):
             raster_settings.debug
         )
 
-        # Invoke C++/CUDA rasterizer
+        # Invoke C++/CUDA culler
         if raster_settings.debug:
             cpu_args = cpu_deep_copy_tuple(args) # Copy them before they can be corrupted
             try:
-                num_rendered, cull_list, radii, geomBuffer, binningBuffer, imgBuffer = _C.rasterize_gaussians(*args)
+                num_rendered, cull_list, radii, geomBuffer, binningBuffer, imgBuffer = _C.cull_gaussians(*args)
             except Exception as ex:
                 torch.save(cpu_args, "snapshot_fw.dump")
                 print("\nAn error occured in forward. Please forward snapshot_fw.dump for debugging.")
                 raise ex
         else:
-            num_rendered, cull_list, radii, geomBuffer, binningBuffer, imgBuffer = _C.rasterize_gaussians(*args)
+            num_rendered, cull_list, radii, geomBuffer, binningBuffer, imgBuffer = _C.cull_gaussians(*args)
 
         # Keep relevant tensors for backward
         ctx.raster_settings = raster_settings
@@ -120,11 +110,7 @@ class _RasterizeGaussians(torch.autograd.Function):
         ctx.save_for_backward(colors_precomp, means3D, scales, rotations, cov3Ds_precomp, view2gaussian_precomp, radii, sh, geomBuffer, binningBuffer, imgBuffer)
         return cull_list
 
-    @staticmethod
-    def get_grad_offset():
-        return _RasterizeGaussians.grad_offsets
-
-class GaussianRasterizationSettings(NamedTuple):
+class GaussianCullSettings(NamedTuple):
     image_height: int
     image_width: int 
     tanfovx : float
@@ -140,14 +126,14 @@ class GaussianRasterizationSettings(NamedTuple):
     prefiltered : bool
     debug : bool
 
-class GaussianRasterizer(nn.Module):
-    def __init__(self, raster_settings):
+class GaussianCuller(nn.Module):
+    def __init__(self, cull_settings):
         super().__init__()
-        self.raster_settings = raster_settings
+        self.cull_settings = cull_settings
 
-    def forward(self, bool_mask, means3D, means2D, opacities, shs = None, colors_precomp = None, scales = None, rotations = None, cov3D_precomp = None, view2gaussian_precomp = None):
+    def forward(self, bool_mask, means3D, opacities, shs = None, colors_precomp = None, scales = None, rotations = None, cov3D_precomp = None, view2gaussian_precomp = None):
         
-        raster_settings = self.raster_settings
+        cull_settings = self.cull_settings
 
         if (shs is None and colors_precomp is None) or (shs is not None and colors_precomp is not None):
             raise Exception('Please provide excatly one of either SHs or precomputed colors!')
@@ -172,10 +158,9 @@ class GaussianRasterizer(nn.Module):
             view2gaussian_precomp = torch.Tensor([])
             
         # Invoke C++/CUDA rasterization routine
-        return rasterize_gaussians(
+        return cull_gaussians(
             bool_mask,
             means3D,
-            means2D,
             shs,
             colors_precomp,
             opacities,
@@ -183,5 +168,5 @@ class GaussianRasterizer(nn.Module):
             rotations,
             cov3D_precomp,
             view2gaussian_precomp,
-            raster_settings, 
+            cull_settings, 
         )

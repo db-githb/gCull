@@ -469,7 +469,7 @@ void FORWARD::preprocess(int P, int D, int M,
 }
 
 __global__ __launch_bounds__(BLOCK_X *BLOCK_Y)
-	void skycullCUDA(
+	void gCullCUDA(
 		const int width,
 		const int height,
 		const bool* bool_mask,
@@ -589,7 +589,7 @@ __global__ __launch_bounds__(BLOCK_X *BLOCK_Y)
 	}
 }
 
-void FORWARD::skycull(
+void FORWARD::gCull(
 	const dim3 tile_bounds, dim3 block,
 	const int width, int height,
 	const bool* bool_mask,
@@ -600,7 +600,7 @@ void FORWARD::skycull(
 	const float3 *__restrict__ scales,
 	const float4 *__restrict__ conic_opacity,
 	bool* output){
-	skycullCUDA<<<tile_bounds, block>>>(
+	gCullCUDA<<<tile_bounds, block>>>(
 		width, height,
 		bool_mask,
 		focal_x, focal_y,

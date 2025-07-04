@@ -15,13 +15,13 @@
 #include <vector>
 #include <functional>
 
-namespace CudaRasterizer
+namespace CudaCuller
 {
-	class Rasterizer
+	class Culler
 	{
 	public:
 		
-		static void skycull(
+		static void gCull(
 			const dim3 tile_bounds, dim3 block,
 			const int width, int height,
 			const bool* sky,
