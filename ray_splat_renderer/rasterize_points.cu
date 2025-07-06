@@ -34,7 +34,7 @@ std::function<char*(size_t N)> resizeFunctional(torch::Tensor& t) {
     return lambda;
 }
 
-std::tuple<int, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
+torch::Tensor
 CullGaussiansCUDA(
 	const torch::Tensor& background,
 	const torch::Tensor& bool_mask,
@@ -83,7 +83,6 @@ CullGaussiansCUDA(
   std::function<char*(size_t)> binningFunc = resizeFunctional(binningBuffer);
   std::function<char*(size_t)> imgFunc = resizeFunctional(imgBuffer);
 
-  int rendered = 0;
   if(P != 0)
   {
 	  int M = 0;
@@ -92,7 +91,7 @@ CullGaussiansCUDA(
 		M = sh.size(1);
       }
 
-	  rendered = CudaCuller::Culler::forward(
+	  CudaCuller::Culler::forward(
 	    geomFunc,
 		binningFunc,
 		imgFunc,
@@ -121,5 +120,5 @@ CullGaussiansCUDA(
 		radii.contiguous().data<int>(),
 		debug);
   }
-  return std::make_tuple(rendered, output, radii, geomBuffer, binningBuffer, imgBuffer);
+  return output;
 }

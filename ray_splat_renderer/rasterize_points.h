@@ -15,7 +15,7 @@
 #include <tuple>
 #include <string>
 
-std::tuple<int, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
+torch::Tensor
 CullGaussiansCUDA(
 	const torch::Tensor& background,
 	const torch::Tensor& bool_mask,

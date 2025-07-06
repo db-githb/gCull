@@ -48,11 +48,9 @@ def cull_gaussians(
 
 class _CullGaussians(torch.autograd.Function):
 
-    grad_offsets = torch.tensor([])
-
     @staticmethod
     def forward(
-        ctx,
+        ctx, # context parameter is auto passed in by PyTorch, need to keep
         bool_mask,
         means3D,
         sh,
@@ -62,52 +60,48 @@ class _CullGaussians(torch.autograd.Function):
         rotations,
         cov3Ds_precomp,
         view2gaussian_precomp,
-        raster_settings,
+        cull_settings,
     ):
 
         # Restructure arguments the way that the C++ lib expects them
         args = (
-            raster_settings.bg,
+            cull_settings.bg,
             bool_mask,
             means3D,
             colors_precomp,
             opacities,
             scales,
             rotations,
-            raster_settings.scale_modifier,
+            cull_settings.scale_modifier,
             cov3Ds_precomp,
             view2gaussian_precomp,
-            raster_settings.viewmatrix,
-            raster_settings.projmatrix,
-            raster_settings.tanfovx,
-            raster_settings.tanfovy,
-            raster_settings.kernel_size,
-            raster_settings.subpixel_offset,
-            raster_settings.image_height,
-            raster_settings.image_width,
+            cull_settings.viewmatrix,
+            cull_settings.projmatrix,
+            cull_settings.tanfovx,
+            cull_settings.tanfovy,
+            cull_settings.kernel_size,
+            cull_settings.subpixel_offset,
+            cull_settings.image_height,
+            cull_settings.image_width,
             sh,
-            raster_settings.sh_degree,
-            raster_settings.campos,
-            raster_settings.prefiltered,
-            raster_settings.debug
+            cull_settings.sh_degree,
+            cull_settings.campos,
+            cull_settings.prefiltered,
+            cull_settings.debug
         )
 
         # Invoke C++/CUDA culler
-        if raster_settings.debug:
+        if cull_settings.debug:
             cpu_args = cpu_deep_copy_tuple(args) # Copy them before they can be corrupted
             try:
-                num_rendered, cull_list, radii, geomBuffer, binningBuffer, imgBuffer = _C.cull_gaussians(*args)
+                cull_list = _C.cull_gaussians(*args)
             except Exception as ex:
                 torch.save(cpu_args, "snapshot_fw.dump")
                 print("\nAn error occured in forward. Please forward snapshot_fw.dump for debugging.")
                 raise ex
         else:
-            num_rendered, cull_list, radii, geomBuffer, binningBuffer, imgBuffer = _C.cull_gaussians(*args)
+            cull_list = _C.cull_gaussians(*args)
 
-        # Keep relevant tensors for backward
-        ctx.raster_settings = raster_settings
-        ctx.num_rendered = num_rendered
-        ctx.save_for_backward(colors_precomp, means3D, scales, rotations, cov3Ds_precomp, view2gaussian_precomp, radii, sh, geomBuffer, binningBuffer, imgBuffer)
         return cull_list
 
 class GaussianCullSettings(NamedTuple):

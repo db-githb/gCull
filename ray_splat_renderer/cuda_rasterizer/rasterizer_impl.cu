@@ -228,7 +228,7 @@ CudaCuller::BinningState CudaCuller::BinningState::fromChunk(char *&chunk, size_
 
 // Forward rendering procedure for differentiable rasterization
 // of Gaussians.
-int CudaCuller::Culler::forward(
+void CudaCuller::Culler::forward(
 	std::function<char *(size_t)> geometryBuffer,
 	std::function<char *(size_t)> binningBuffer,
 	std::function<char *(size_t)> imageBuffer,
@@ -367,14 +367,12 @@ int CudaCuller::Culler::forward(
 			imgState.ranges);
 	CHECK_CUDA(, debug)
 
-	// printf("in CudaRasterizer::Rasterizer::forward, P: %d num_rendered: %d geo_chunk_size: %d img_chunk_size: %d, binning_chunk_size: %d\n", P, num_rendered, chunk_size, img_chunk_size, binning_chunk_size);
 	//  Let each tile blend its range of Gaussians independently in parallel
 	const float *feature_ptr = colors_precomp != nullptr ? colors_precomp : geomState.rgb;
 	// const float* cov3Ds = cov3D_precomp != nullptr ? cov3D_precomp : geomState.cov3D;
 	const float *view2gaussian = view2gaussian_precomp != nullptr ? view2gaussian_precomp : geomState.view2gaussian;
 	// const float* view2gaussian = view2gaussian_precomp;
-	//printf("\nW: %d, H: %d\n", width, height);
-	//printf("\nBM: %d\n", bool_mask[3840*2160-1]);
+	
 	bool* d_boolMask;
 	cudaMalloc(&d_boolMask, width * height * sizeof(bool));
 	cudaMemcpy(d_boolMask, bool_mask, width * height * sizeof(bool), cudaMemcpyHostToDevice);
@@ -392,5 +390,5 @@ int CudaCuller::Culler::forward(
 	), debug);
 	cudaDeviceSynchronize();
 	cudaFree(d_boolMask);
-	return num_rendered;
+	return;
 }

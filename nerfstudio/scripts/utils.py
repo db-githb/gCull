@@ -201,7 +201,6 @@ def get_cull_list(model, camera, bool_mask):
     scales =   get_scaling(model, filter_3D) # self.get_scaling_with_3D_filter(self) # mip-splatting 3D filter from GOF 
     rotation = get_rot_with_act_func(model) # self.quats 
 
-
     cull_lst = gCuller(
             bool_mask = bool_mask,
             means3D = means3D,

@@ -33,7 +33,7 @@ namespace CudaCuller
 			const float4 *__restrict__ conic_opacity,
 			bool* output);	
 
-		static int forward(
+		static void forward(
 			std::function<char* (size_t)> geometryBuffer,
 			std::function<char* (size_t)> binningBuffer,
 			std::function<char* (size_t)> imageBuffer,
