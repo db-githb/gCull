@@ -30,8 +30,7 @@ import tyro
 
 from typing_extensions import Annotated
 from nerfstudio.pipelines.base_pipeline import VanillaPipelineConfig
-from nerfstudio.data.datamanagers.base_datamanager import VanillaDataManager, VanillaDataManagerConfig
-from nerfstudio.data.datamanagers.full_images_datamanager import FullImageDatamanagerConfig
+from nerfstudio.data.datamanagers.full_images_datamanager import FullImageDatamanager
 from nerfstudio.data.datasets.base_dataset import Dataset
 from nerfstudio.data.utils.dataloaders import FixedIndicesEvalDataloader
 from nerfstudio.utils.eval_utils import eval_setup
@@ -214,21 +213,6 @@ class DatasetCull(BaseCull):
             bool_mask = torch.tensor(np.array(Image.open(filepath))) == 0 # convert to bool tensor for ease of CUDA hand-off where black = True / non-black = False
             #show_mask(bool_mask)
             return bool_mask
-
-        def update_config(config):
-            data_manager_config = config.pipeline.datamanager
-            assert isinstance(data_manager_config, (VanillaDataManagerConfig, FullImageDatamanagerConfig))
-            data_manager_config.eval_num_images_to_sample_from = -1
-            data_manager_config.eval_num_times_to_repeat_images = -1
-            if isinstance(data_manager_config, VanillaDataManagerConfig):
-                data_manager_config.train_num_images_to_sample_from = -1
-                data_manager_config.train_num_times_to_repeat_images = -1
-            if self.data is not None:
-                data_manager_config.data = self.data
-            if self.downscale_factor is not None:
-                assert hasattr(data_manager_config.dataparser, "downscale_factor")
-                setattr(data_manager_config.dataparser, "downscale_factor", self.downscale_factor)
-            return config
         
         config, pipeline = eval_setup(
             self.load_config,
@@ -247,7 +231,7 @@ class DatasetCull(BaseCull):
         cull_lst_master = torch.zeros(total_gauss, dtype=torch.bool)
 
         for split in self.split.split("+"):
-            datamanager: VanillaDataManager
+            datamanager: FullImageDatamanager
             dataset: Dataset
             if split == "train":
                 with _disable_datamanager_setup(config.datamanager._target):  # pylint: disable=protected-access

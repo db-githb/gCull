@@ -24,7 +24,6 @@ import torch
 from torch.utils.data.dataloader import DataLoader
 
 from nerfstudio.cameras.cameras import Cameras
-from nerfstudio.cameras.rays import RayBundle
 from nerfstudio.data.datasets.base_dataset import InputDataset
 
 T = TypeVar("T")
@@ -73,10 +72,6 @@ class EvalDataloader(DataLoader):
     def __iter__(self):
         """Iterates over the dataset"""
         return self
-
-    @abstractmethod
-    def __next__(self) -> Tuple[RayBundle, Dict]:
-        """Returns the next batch of data"""
 
     def get_camera(self, image_idx: int = 0) -> Tuple[Cameras, Dict]:
         """Get camera for the given image index

@@ -15,19 +15,14 @@
 """
 Camera Models
 """
-import base64
-import math
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Dict, List, Literal, Optional, Tuple, Union
+from typing import Dict, List, Optional, Union
 
-import cv2
 import torch
 from jaxtyping import Float, Int, Shaped
 from torch import Tensor
 
-from nerfstudio.cameras import camera_utils
-from nerfstudio.cameras.rays import RayBundle
 from nerfstudio.utils.tensor_dataclass import TensorDataclass
 
 TORCH_DEVICE = Union[torch.device, str]
@@ -66,7 +61,7 @@ CAMERA_MODEL_TO_TYPE = {
 
 @dataclass(init=False)
 class Cameras(TensorDataclass):
-    """Dataparser outputs for the image dataset and the ray generator.
+    """Dataparser outputs for the image dataset and the camera.
 
     If a single value is provided, it is broadcasted to all cameras.
 

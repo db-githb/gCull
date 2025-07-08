@@ -13,22 +13,20 @@
 # limitations under the License.
 
 """
-Base Model implementation which takes in RayBundles or Cameras
+Base Model implementation which takes in Cameras
 """
 
 from __future__ import annotations
 
 from abc import abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Type, Union
+from typing import Any, Dict, List, Type, Union
 
 import torch
 from torch import nn
 from torch.nn import Parameter
 
 from nerfstudio.cameras.cameras import Cameras
-from nerfstudio.cameras.rays import RayBundle
-
 # Model related configs
 @dataclass
 class ModelConfig():
@@ -86,19 +84,19 @@ class Model(nn.Module):
         """
 
     @abstractmethod
-    def get_outputs(self, ray_bundle: Union[RayBundle, Cameras]) -> Dict[str, Union[torch.Tensor, List]]:
-        """Takes in a Ray Bundle and returns a dictionary of outputs.
+    def get_outputs(self, cam: Cameras) -> Dict[str, Union[torch.Tensor, List]]:
+        """Takes in a Camera and returns a dictionary of outputs.
 
         Args:
-            ray_bundle: Input bundle of rays. This raybundle should have all the
+            ray_bundle: Input camera. This camera should have all the
             needed information to compute the outputs.
 
         Returns:
             Outputs of model. (ie. rendered colors)
         """
 
-    def forward(self, ray_bundle: Union[RayBundle, Cameras]) -> Dict[str, Union[torch.Tensor, List]]:
-        """Run forward starting with a ray bundle. This outputs different things depending on the configuration
+    def forward(self, cam: Cameras) -> Dict[str, Union[torch.Tensor, List]]:
+        """Run forward starting with a camera. This outputs different things depending on the configuration
         of the model and whether or not the batch is provided (whether or not we are training basically)
 
         Args:

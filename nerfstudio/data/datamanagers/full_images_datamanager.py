@@ -13,7 +13,7 @@
 # limitations under the License.
 
 """
-Data manager that outputs cameras / images instead of raybundles
+Data manager that outputs cameras / images
 
 Good for things like gaussian splatting which require full cameras instead of the standard ray
 paradigm
@@ -27,7 +27,7 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
-from typing import Dict, Generic, List, Literal, Optional, Tuple, Type, Union
+from typing import Dict, Generic, List, Literal, Optional, Tuple, Type, Union, TypeVar
 
 import cv2
 import numpy as np
@@ -93,8 +93,7 @@ class FullImageDatamanagerConfig(DataManagerConfig):
 
 class FullImageDatamanager(DataManager, Generic[TDataset]):
     """
-    A datamanager that outputs full images and cameras instead of raybundles. This makes the
-    datamanager more lightweight since we don't have to do generate rays. Useful for full-image
+    A datamanager that outputs full images and cameras. Useful for full-image
     training e.g. rasterization pipelines
     """
 
@@ -258,14 +257,10 @@ class FullImageDatamanager(DataManager, Generic[TDataset]):
         """
         return {}
 
-    def get_train_rays_per_batch(self):
-        # TODO: fix this to be the resolution of the last image rendered
-        return 800 * 800
-
     def next_train(self, step: int) -> Tuple[Cameras, Dict]:
         """Returns the next training batch
 
-        Returns a Camera instead of raybundle"""
+        Returns a Camera """
         image_idx = self.train_unseen_cameras.pop(random.randint(0, len(self.train_unseen_cameras) - 1))
         # Make sure to re-populate the unseen cameras list if we have exhausted it
         if len(self.train_unseen_cameras) == 0:
@@ -284,7 +279,7 @@ class FullImageDatamanager(DataManager, Generic[TDataset]):
     def next_eval(self, step: int) -> Tuple[Cameras, Dict]:
         """Returns the next evaluation batch
 
-        Returns a Camera instead of raybundle"""
+        Returns a Camera"""
         image_idx = self.eval_unseen_cameras.pop(random.randint(0, len(self.eval_unseen_cameras) - 1))
         # Make sure to re-populate the unseen cameras list if we have exhausted it
         if len(self.eval_unseen_cameras) == 0:
@@ -298,7 +293,7 @@ class FullImageDatamanager(DataManager, Generic[TDataset]):
     def next_eval_image(self, step: int) -> Tuple[Cameras, Dict]:
         """Returns the next evaluation batch
 
-        Returns a Camera instead of raybundle
+        Returns a Camera
 
         TODO: Make sure this logic is consistent with the vanilladatamanager"""
         image_idx = self.eval_unseen_cameras.pop(random.randint(0, len(self.eval_unseen_cameras) - 1))

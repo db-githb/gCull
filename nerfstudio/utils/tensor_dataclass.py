@@ -280,15 +280,6 @@ class TensorDataclass:
     ) -> TensorDataclassT:
         """Applies a function to all fields of the tensor dataclass.
 
-        TODO: Someone needs to make a high level design choice for whether not not we want this
-        to apply the function to any fields in arbitray superclasses. This is an edge case until we
-        upgrade to python 3.10 and dataclasses can actually be subclassed with vanilla python and no
-        janking, but if people try to jank some subclasses that are grandchildren of TensorDataclass
-        (imagine if someone tries to subclass the RayBundle) this will matter even before upgrading
-        to 3.10 . Currently we aren't going to be able to work properly for grandchildren, but you
-        want to use self.__dict__ if you want to apply this to grandchildren instead of our dictionary
-        from dataclasses.fields(self) as we do below and in other places.
-
         Args:
             fn: The function to apply to tensor fields.
             dataclass_fn: The function to apply to TensorDataclass fields.
