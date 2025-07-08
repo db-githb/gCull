@@ -17,8 +17,6 @@ Decorator definitions
 """
 from typing import Callable, List
 
-from nerfstudio.utils import comms
-
 
 def decorate_all(decorators: List[Callable]) -> Callable:
     """A decorator to decorate all member functions of a class
@@ -49,18 +47,6 @@ def check_profiler_enabled(func: Callable) -> Callable:
     return wrapper
 
 
-def check_viewer_enabled(func: Callable) -> Callable:
-    """Decorator: check if the viewer or legacy viewer is enabled and only run on main process"""
-
-    def wrapper(self, *args, **kwargs):
-        ret = None
-        if (self.config.is_viewer_enabled() or self.config.is_viewer_legacy_enabled()) and comms.is_main_process():
-            ret = func(self, *args, **kwargs)
-        return ret
-
-    return wrapper
-
-
 def check_eval_enabled(func: Callable) -> Callable:
     """Decorator: check if evaluation step is enabled"""
 
@@ -68,18 +54,6 @@ def check_eval_enabled(func: Callable) -> Callable:
         ret = None
         if self.config.is_wandb_enabled() or self.config.is_tensorboard_enabled() or self.config.is_comet_enabled():
             ret = func(self, *args, **kwargs)
-        return ret
-
-    return wrapper
-
-
-def check_main_thread(func: Callable) -> Callable:
-    """Decorator: check if you are on main thread"""
-
-    def wrapper(*args, **kwargs):
-        ret = None
-        if comms.is_main_process():
-            ret = func(*args, **kwargs)
         return ret
 
     return wrapper
