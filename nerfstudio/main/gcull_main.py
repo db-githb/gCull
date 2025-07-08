@@ -28,17 +28,17 @@ from typing import List, Literal, Optional
 import torch
 import tyro
 
-from typing_extensions import Annotated
+from typing_extensions import Annotated, Tuple
 from nerfstudio.pipelines.base_pipeline import VanillaPipelineConfig
 from nerfstudio.data.datamanagers.full_images_datamanager import FullImageDatamanager
 from nerfstudio.data.datasets.base_dataset import Dataset
 from nerfstudio.data.utils.dataloaders import FixedIndicesEvalDataloader
-from nerfstudio.utils.eval_utils import eval_setup
 from nerfstudio.utils.rich_utils import CONSOLE, ItersPerSecColumn
+from nerfstudio.main.utils_main import setup_write_ply, write_ply, eval_setup
 from PIL import Image
-from collections import OrderedDict
+
 import matplotlib.pyplot as plt
-from utils import get_cull_list
+from nerfstudio.main.utils_cull import get_cull_list
 
 from rich.progress import (
     BarColumn,
@@ -52,98 +52,6 @@ from rich.panel import Panel
 from rich.table import Table
 import numpy as np
 from rich import box, style
-
-def setup_write_ply(inModel):
-    model = inModel
-    count = 0
-    map_to_tensors = OrderedDict()
-
-    with torch.no_grad():
-        positions = model.means.cpu().numpy()
-        count = positions.shape[0]
-        n = count
-
-        map_to_tensors["x"] = positions[:, 0]
-        map_to_tensors["y"] = positions[:, 1]
-        map_to_tensors["z"] = positions[:, 2]
-        map_to_tensors["nx"] = np.zeros(n, dtype=np.float32)
-        map_to_tensors["ny"] = np.zeros(n, dtype=np.float32)
-        map_to_tensors["nz"] = np.zeros(n, dtype=np.float32)
-
-        if model.config.sh_degree > 0:
-            shs_0 = model.shs_0.contiguous().cpu().numpy()
-            for i in range(shs_0.shape[1]):
-                map_to_tensors[f"f_dc_{i}"] = shs_0[:, i, None]
-            # transpose(1, 2) was needed to match the sh order in Inria version
-            shs_rest = model.shs_rest.transpose(1, 2).contiguous().cpu().numpy()
-            shs_rest = shs_rest.reshape((n, -1))
-            for i in range(shs_rest.shape[-1]):
-                map_to_tensors[f"f_rest_{i}"] = shs_rest[:, i, None]
-        else:
-            colors = torch.clamp(model.colors.clone(), 0.0, 1.0).data.cpu().numpy()
-            map_to_tensors["colors"] = (colors * 255).astype(np.uint8)
-
-        map_to_tensors["opacity"] = model.opacities.data.cpu().numpy()
-        scales = model.scales.data.cpu().numpy()
-        for i in range(3):
-            map_to_tensors[f"scale_{i}"] = scales[:, i, None]
-        quats = model.quats.data.cpu().numpy()
-        for i in range(4):
-            map_to_tensors[f"rot_{i}"] = quats[:, i, None]
-
-    # post optimization, it is possible have NaN/Inf values in some attributes
-    # to ensure the exported ply file has finite values, we enforce finite filters.
-    select = np.ones(n, dtype=bool)
-    for k, t in map_to_tensors.items():
-        n_before = np.sum(select)
-        select = np.logical_and(select, np.isfinite(t).all(axis=-1))
-        n_after = np.sum(select)
-        if n_after < n_before:
-            CONSOLE.print(f"{n_before - n_after} NaN/Inf elements in {k}")
-    if np.sum(select) < n:
-        CONSOLE.print(f"values have NaN/Inf in map_to_tensors, only export {np.sum(select)}/{n}")
-        for k, t in map_to_tensors.items():
-            map_to_tensors[k] = map_to_tensors[k][select]
-        count = np.sum(select)
-    return count, map_to_tensors
-
-def write_ply(filename, count, map_to_tensors):
-        
-    # Ensure count matches the length of all tensors
-    if not all(len(tensor) == count for tensor in map_to_tensors.values()):
-        raise ValueError("Count does not match the length of all tensors")
-    
-    # Type check for numpy arrays of type float or uint8 and non-empty
-    if not all(
-        isinstance(tensor, np.ndarray)
-        and (tensor.dtype.kind == "f" or tensor.dtype == np.uint8)
-        and tensor.size > 0
-        for tensor in map_to_tensors.values()
-    ):
-        raise ValueError("All tensors must be numpy arrays of float or uint8 type and not empty")
-    
-    with open(filename, "wb") as ply_file:
-        # Write PLY header
-        ply_file.write(b"ply\n")
-        ply_file.write(b"format binary_little_endian 1.0\n")
-        ply_file.write(f"element vertex {count}\n".encode())
-
-        # Write properties, in order due to OrderedDict
-        for key, tensor in map_to_tensors.items():
-            data_type = "float" if tensor.dtype.kind == "f" else "uchar"
-            ply_file.write(f"property {data_type} {key}\n".encode())
-        ply_file.write(b"end_header\n")
-
-        # Write binary data
-        # Note: If this is a performance bottleneck consider using numpy.hstack for efficiency improvement
-        for i in range(count):
-            for tensor in map_to_tensors.values():
-                value = tensor[i]
-                if tensor.dtype.kind == "f":
-                    ply_file.write(np.float32(value).tobytes())
-                elif tensor.dtype == np.uint8:
-                    ply_file.write(value.tobytes())
-
 
 @dataclass
 class BaseCull:

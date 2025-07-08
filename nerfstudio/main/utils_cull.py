@@ -47,22 +47,6 @@ def compute_3D_filter(model, camera, s):
     filter_3D = filter_3D.unsqueeze(1) # mine - needs second dimension to allow for operations with opacity and scales
     return filter_3D
 
-def get_background(model):
-    # get the background color
-    if model.training:
-        if model.config.background_color == "random":
-            background = torch.rand(3, device=model.device)
-        elif model.config.background_color == "white":
-            background = torch.ones(3, device=model.device)
-        elif model.config.background_color == "black":
-            background = torch.zeros(3, device=model.device)
-        else:
-            background = model.background_color.to(model.device)
-    else:
-        background = model.background_color.to(model.device)
-
-    return background
-
 # taken from gaussian-opacity-fields
 def get_opacity_with_3D_filter(model, filter_3D):
     opacities = model.opacities
@@ -213,6 +197,5 @@ def get_cull_list(model, camera, bool_mask):
             view2gaussian_precomp=None)
     
     return cull_lst
-
 
 
