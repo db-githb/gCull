@@ -20,7 +20,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
-from typing import Callable, Literal, Optional, Tuple
+from typing import Literal, Tuple
 
 import torch
 import re, yaml
@@ -32,6 +32,7 @@ from nerfstudio.pipelines.base_pipeline import VanillaPipelineConfig
 from nerfstudio.data.datamanagers.full_images_datamanager import FullImageDatamanagerConfig
 from nerfstudio.models.splatfacto import SplatfactoModelConfig
 from nerfstudio.data.dataparsers.colmap_dataparser import ColmapDataParserConfig
+from nerfstudio.data.datasets.base_dataset import InputDataset
 
 def eval_load_checkpoint(config, pipeline: Pipeline) -> Tuple[Path, int]:
     ## TODO: ideally eventually want to get this to be the same as whatever is used to load train checkpoint too
@@ -101,6 +102,7 @@ def eval_setup(
     # Build datamanager config
     dm_conf = FullImageDatamanagerConfig(
         data=dm_root,
+        dataset=InputDataset,
         dataparser=colmap_parser,
         cache_images="cpu",
         cache_images_type="uint8",
