@@ -68,24 +68,6 @@ class Frustums(TensorDataclass):
         """Sets offsets for this frustum for computing positions"""
         self.offsets = offsets
 
-    def get_gaussian_blob(self):
-        """Calculates guassian approximation of conical frustum.
-
-        Returns:
-            Conical frustums approximated by gaussian distribution.
-        """
-        # Cone radius is set such that the square pixel_area matches the cone area.
-        cone_radius = torch.sqrt(self.pixel_area) / 1.7724538509055159  # r = sqrt(pixel_area / pi)
-        if self.offsets is not None:
-            raise NotImplementedError()
-        return conical_frustum_to_gaussian(
-            origins=self.origins,
-            directions=self.directions,
-            starts=self.starts,
-            ends=self.ends,
-            radius=cone_radius,
-        )
-
     @classmethod
     def get_mock_frustum(cls, device: Optional[TORCH_DEVICE] = "cpu") -> "Frustums":
         """Helper function to generate a placeholder frustum.

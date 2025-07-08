@@ -19,9 +19,8 @@ Base Model implementation which takes in RayBundles or Cameras
 from __future__ import annotations
 
 from abc import abstractmethod
-from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple, Type, Union
+from typing import Any, Dict, List, Optional, Type, Union
 
 import torch
 from torch import nn
@@ -29,9 +28,6 @@ from torch.nn import Parameter
 
 from nerfstudio.cameras.cameras import Cameras
 from nerfstudio.cameras.rays import RayBundle
-from nerfstudio.configs.config_utils import to_immutable_dict
-
-
 
 # Model related configs
 @dataclass
@@ -40,16 +36,6 @@ class ModelConfig():
 
     _target: Type = field(default_factory=lambda: Model)
     """target class to instantiate"""
-    enable_collider: bool = True
-    """Whether to create a scene collider to filter rays."""
-    collider_params: Optional[Dict[str, float]] = to_immutable_dict({"near_plane": 2.0, "far_plane": 6.0})
-    """parameters to instantiate scene collider with"""
-    loss_coefficients: Dict[str, float] = to_immutable_dict({"rgb_loss_coarse": 1.0, "rgb_loss_fine": 1.0})
-    """parameters to instantiate density field with"""
-    eval_num_rays_per_chunk: int = 4096
-    """specifies number of rays per chunk during eval"""
-    prompt: Optional[str] = None
-    """A prompt to be used in text to NeRF models"""
 
 
 class Model(nn.Module):

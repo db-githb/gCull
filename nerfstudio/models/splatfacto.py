@@ -25,13 +25,22 @@ from typing import Dict, List, Optional, Tuple, Type, Any
 
 import numpy as np
 import torch
-from gsplat.sh import num_sh_bases
 from torch.nn import Parameter
 
 # need following import for background color override
 from nerfstudio.models.base_model import Model, ModelConfig
 from nerfstudio.utils.rich_utils import CONSOLE
 
+def num_sh_bases(degree: int):
+    if degree == 0:
+        return 1
+    if degree == 1:
+        return 4
+    if degree == 2:
+        return 9
+    if degree == 3:
+        return 16
+    return 25
 
 def random_quat_tensor(N):
     """
