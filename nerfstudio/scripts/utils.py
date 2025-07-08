@@ -1,5 +1,5 @@
 import torch
-from ray_splat_renderer import GaussianCullSettings, GaussianCuller
+from gCull.gCullPy import GaussianCullSettings, GaussianCuller
 
 # taken from gaussian-opacity-fields
 def compute_3D_filter(model, camera, s):

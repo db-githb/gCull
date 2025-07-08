@@ -68,7 +68,7 @@ class Frustums(TensorDataclass):
         """Sets offsets for this frustum for computing positions"""
         self.offsets = offsets
 
-    def get_gaussian_blob(self) -> Gaussians:
+    def get_gaussian_blob(self):
         """Calculates guassian approximation of conical frustum.
 
         Returns:

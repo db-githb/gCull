@@ -19,19 +19,17 @@ render.py
 from __future__ import annotations
 import os
 import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Literal, Optional
 
-import numpy as np
 import torch
 import tyro
-from rich import box, style
-from rich.panel import Panel
-from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
-from rich.table import Table
+
 from typing_extensions import Annotated
+from nerfstudio.pipelines.base_pipeline import VanillaPipelineConfig
 from nerfstudio.data.datamanagers.base_datamanager import VanillaDataManager, VanillaDataManagerConfig
 from nerfstudio.data.datamanagers.full_images_datamanager import FullImageDatamanagerConfig
 from nerfstudio.data.datasets.base_dataset import Dataset
@@ -42,6 +40,19 @@ from PIL import Image
 from collections import OrderedDict
 import matplotlib.pyplot as plt
 from utils import get_cull_list
+
+from rich.progress import (
+    BarColumn,
+    Progress,
+    TaskProgressColumn,
+    TimeRemainingColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
+from rich.panel import Panel
+from rich.table import Table
+import numpy as np
+from rich import box, style
 
 def setup_write_ply(inModel):
     model = inModel
@@ -136,7 +147,7 @@ def write_ply(filename, count, map_to_tensors):
 
 
 @dataclass
-class BaseRender:
+class BaseCull:
     """Base class for rendering."""
 
     load_config: Path
@@ -178,7 +189,7 @@ def _disable_datamanager_setup(cls):
 
 
 @dataclass
-class DatasetRender(BaseRender):
+class DatasetCull(BaseCull):
     """Render all images in the dataset."""
 
     output_path: Path = Path("renders")
@@ -218,15 +229,17 @@ class DatasetRender(BaseRender):
                 assert hasattr(data_manager_config.dataparser, "downscale_factor")
                 setattr(data_manager_config.dataparser, "downscale_factor", self.downscale_factor)
             return config
-
-        config, pipeline, _, _ = eval_setup(
+        
+        config, pipeline = eval_setup(
             self.load_config,
-            eval_num_rays_per_chunk=self.eval_num_rays_per_chunk,
             test_mode="inference",
-            update_config_callback=update_config,
         )
-        data_manager_config = config.pipeline.datamanager
-        assert isinstance(data_manager_config, (VanillaDataManagerConfig, FullImageDatamanagerConfig))
+        assert isinstance(config, (VanillaPipelineConfig))
+
+        if self.downscale_factor is not None:
+            dataparser = config.datamanager.dataparser
+            if hasattr(dataparser, "downscale_factor"):
+                setattr(dataparser, "downscale_factor", self.downscale_factor)
 
         root_dir = ""
         model = pipeline.model
@@ -237,14 +250,14 @@ class DatasetRender(BaseRender):
             datamanager: VanillaDataManager
             dataset: Dataset
             if split == "train":
-                with _disable_datamanager_setup(data_manager_config._target):  # pylint: disable=protected-access
-                    datamanager = data_manager_config.setup(test_mode="test", device=pipeline.device)
+                with _disable_datamanager_setup(config.datamanager._target):  # pylint: disable=protected-access
+                    datamanager = config.datamanager.setup(test_mode="test", device=pipeline.device)
 
                 dataset = datamanager.train_dataset
                 dataparser_outputs = getattr(dataset, "_dataparser_outputs", datamanager.train_dataparser_outputs)
             else:
-                with _disable_datamanager_setup(data_manager_config._target):  # pylint: disable=protected-access
-                    datamanager = data_manager_config.setup(test_mode=split, device=pipeline.device)
+                with _disable_datamanager_setup(config.datamanager._target):  # pylint: disable=protected-access
+                    datamanager = config.datamanager.setup(test_mode=split, device=pipeline.device)
 
                 dataset = datamanager.eval_dataset
                 dataparser_outputs = getattr(dataset, "_dataparser_outputs", None)
@@ -304,7 +317,7 @@ class DatasetRender(BaseRender):
 
 
 Commands = tyro.conf.FlagConversionOff[
-        Annotated[DatasetRender, tyro.conf.subcommand(name="dataset")]
+        Annotated[DatasetCull, tyro.conf.subcommand(name="dataset")]
 ]
 
 

@@ -23,13 +23,18 @@ from pathlib import Path
 from typing import Callable, Literal, Optional, Tuple
 
 import torch
-import yaml
+import re, yaml
 
 from nerfstudio.configs.method_configs import all_methods
 from nerfstudio.engine.trainer import TrainerConfig
 from nerfstudio.pipelines.base_pipeline import Pipeline
 from nerfstudio.utils.rich_utils import CONSOLE
 
+from nerfstudio.pipelines.base_pipeline import VanillaPipelineConfig
+from nerfstudio.data.datamanagers.full_images_datamanager import FullImageDatamanagerConfig
+from nerfstudio.engine.trainer import TrainerConfig
+from nerfstudio.models.splatfacto import SplatfactoModelConfig
+from nerfstudio.data.dataparsers.colmap_dataparser import ColmapDataParserConfig
 
 def eval_load_checkpoint(config: TrainerConfig, pipeline: Pipeline) -> Tuple[Path, int]:
     ## TODO: ideally eventually want to get this to be the same as whatever is used to load train checkpoint too
@@ -63,50 +68,68 @@ def eval_load_checkpoint(config: TrainerConfig, pipeline: Pipeline) -> Tuple[Pat
     CONSOLE.print(f":white_check_mark: Done loading checkpoint from {load_path}")
     return load_path, load_step
 
+def to_path(val):
+        if isinstance(val, list):
+            return Path(*val)
+        return Path(val)
 
 def eval_setup(
     config_path: Path,
-    eval_num_rays_per_chunk: Optional[int] = None,
     test_mode: Literal["test", "val", "inference"] = "test",
-    update_config_callback: Optional[Callable[[TrainerConfig], TrainerConfig]] = None,
-) -> Tuple[TrainerConfig, Pipeline, Path, int]:
-    """Shared setup for loading a saved pipeline for evaluation.
+) -> Tuple[VanillaPipelineConfig, Pipeline]:
 
-    Args:
-        config_path: Path to config YAML file.
-        eval_num_rays_per_chunk: Number of rays per forward pass
-        test_mode:
-            'val': loads train/val datasets into memory
-            'test': loads train/test dataset into memory
-            'inference': does not load any dataset into memory
-        update_config_callback: Callback to update the config before loading the pipeline
-
-
-    Returns:
-        Loaded config, pipeline module, corresponding checkpoint, and step
-    """
     # load save config
-    config = yaml.load(config_path.read_text(), Loader=yaml.Loader)
-    assert isinstance(config, TrainerConfig)
+    txt = config_path.read_text()
+    cleaned = re.sub(r'!+python/[^\s]+', '', txt)
+    data = yaml.safe_load(cleaned)
+    # Extract data root
+    dm_data = data.get('data')
+    if isinstance(dm_data, list):
+        # e.g. ["data", "discord_car"] → Path("data/discord_car")
+        dm_root = Path(*dm_data)
+    else:
+        # e.g. "data/discord_car" → Path("data/discord_car")
+        dm_root = Path(dm_data)
+    
+    colmap_parser = ColmapDataParserConfig(
+        colmap_path=(dm_root / "colmap" / "sparse" / "0").resolve(),
+        images_path=(dm_root / "images").resolve(),
+        load_3D_points=True,
+        assume_colmap_world_coordinate_convention=True,
+        auto_scale_poses=True,
+        center_method="poses",
+        downscale_factor=1
+    )
 
-    config.pipeline.datamanager._target = all_methods[config.method_name].pipeline.datamanager._target
-    if eval_num_rays_per_chunk:
-        config.pipeline.model.eval_num_rays_per_chunk = eval_num_rays_per_chunk
+    # Build datamanager config
+    dm_conf = FullImageDatamanagerConfig(
+        data=dm_root,
+        dataparser=colmap_parser,
+        cache_images="cpu",
+        cache_images_type="uint8",
+        camera_res_scale_factor=1.0,
+    )
+    
+    config = VanillaPipelineConfig(
+        datamanager=dm_conf,
+        model=SplatfactoModelConfig(),
+    )
 
-    if update_config_callback is not None:
-        config = update_config_callback(config)
+    CONSOLE.print("Loading latest checkpoint from load_dir")
+    output_dir = to_path(data["output_dir"])
+    experiment_name = data["experiment_name"]
+    method_name = data["method_name"]
+    timestamp = data["timestamp"]
+    relative_model_dir = to_path(data.get("relative_model_dir", "."))
+    config.load_dir  = output_dir / experiment_name / method_name / timestamp / relative_model_dir
+    load_step = sorted(int(x[x.find("-") + 1 : x.find(".")]) for x in os.listdir(config.load_dir))[-1]
+    load_path = config.load_dir / f"step-{load_step:09d}.ckpt"
 
-    # load checkpoints from wherever they were saved
-    # TODO: expose the ability to choose an arbitrary checkpoint
-    config.load_dir = config.get_checkpoint_dir()
-
-    # setup pipeline (which includes the DataManager)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    pipeline = config.pipeline.setup(device=device, test_mode=test_mode)
-    assert isinstance(pipeline, Pipeline)
-    pipeline.eval()
-
-    # load checkpointed information
-    checkpoint_path, step = eval_load_checkpoint(config, pipeline)
-
-    return config, pipeline, checkpoint_path, step
+    pipeline = config.setup(device=device, test_mode=test_mode)
+    assert load_path.exists(), f"Checkpoint {load_path} does not exist"
+    loaded_state = torch.load(load_path, map_location="cpu")
+    pipeline.load_pipeline(loaded_state["pipeline"], loaded_state["step"])
+    CONSOLE.print(f":white_check_mark: Done loading checkpoint from {load_path}")
+    
+    return config, pipeline
