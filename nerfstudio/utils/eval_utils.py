@@ -25,18 +25,15 @@ from typing import Callable, Literal, Optional, Tuple
 import torch
 import re, yaml
 
-from nerfstudio.configs.method_configs import all_methods
-from nerfstudio.engine.trainer import TrainerConfig
 from nerfstudio.pipelines.base_pipeline import Pipeline
 from nerfstudio.utils.rich_utils import CONSOLE
 
 from nerfstudio.pipelines.base_pipeline import VanillaPipelineConfig
 from nerfstudio.data.datamanagers.full_images_datamanager import FullImageDatamanagerConfig
-from nerfstudio.engine.trainer import TrainerConfig
 from nerfstudio.models.splatfacto import SplatfactoModelConfig
 from nerfstudio.data.dataparsers.colmap_dataparser import ColmapDataParserConfig
 
-def eval_load_checkpoint(config: TrainerConfig, pipeline: Pipeline) -> Tuple[Path, int]:
+def eval_load_checkpoint(config, pipeline: Pipeline) -> Tuple[Path, int]:
     ## TODO: ideally eventually want to get this to be the same as whatever is used to load train checkpoint too
     """Helper function to load checkpointed pipeline
 

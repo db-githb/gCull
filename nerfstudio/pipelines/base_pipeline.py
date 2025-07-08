@@ -36,7 +36,6 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from nerfstudio.configs.base_config import InstantiateConfig
 from nerfstudio.data.datamanagers.base_datamanager import DataManager, DataManagerConfig, VanillaDataManager
 from nerfstudio.data.datamanagers.full_images_datamanager import FullImageDatamanager
-from nerfstudio.engine.callbacks import TrainingCallback, TrainingCallbackAttributes
 from nerfstudio.models.base_model import Model, ModelConfig
 
 
@@ -179,20 +178,6 @@ class Pipeline(nn.Module):
             output_path: optional path to save rendered images to
             get_std: Set True if you want to return std with the mean metric.
         """
-
-    def load_pipeline(self, loaded_state: Dict[str, Any], step: int) -> None:
-        """Load the checkpoint from the given path
-
-        Args:
-            loaded_state: pre-trained model state dict
-            step: training step of the loaded checkpoint
-        """
-
-    @abstractmethod
-    def get_training_callbacks(
-        self, training_callback_attributes: TrainingCallbackAttributes
-    ) -> List[TrainingCallback]:
-        """Returns the training callbacks from both the Dataloader and the Model."""
 
     @abstractmethod
     def get_param_groups(self) -> Dict[str, List[Parameter]]:

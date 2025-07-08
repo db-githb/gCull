@@ -31,8 +31,6 @@ from nerfstudio.cameras.cameras import Cameras
 from nerfstudio.cameras.rays import RayBundle
 from nerfstudio.configs.base_config import InstantiateConfig
 from nerfstudio.configs.config_utils import to_immutable_dict
-from nerfstudio.engine.callbacks import TrainingCallback, TrainingCallbackAttributes
-
 
 
 
@@ -87,12 +85,6 @@ class Model(nn.Module):
     def device(self):
         """Returns the device that the model is on."""
         return self.device_indicator_param.device
-
-    def get_training_callbacks(
-        self, training_callback_attributes: TrainingCallbackAttributes
-    ) -> List[TrainingCallback]:
-        """Returns a list of callbacks that run functions at the specified training iterations."""
-        return []
 
     def populate_modules(self):
         """Set the necessary modules to get the network working."""

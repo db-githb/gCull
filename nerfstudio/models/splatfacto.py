@@ -34,7 +34,6 @@ from torch.nn import Parameter
 from typing_extensions import Literal
 
 from nerfstudio.cameras.cameras import Cameras
-from nerfstudio.engine.callbacks import TrainingCallback, TrainingCallbackAttributes, TrainingCallbackLocation
 from nerfstudio.engine.optimizers import Optimizers
 
 # need following import for background color override
@@ -571,28 +570,6 @@ class SplatfactoModel(Model):
         for name, param in self.gauss_params.items():
             new_dups[name] = param[dup_mask]
         return new_dups
-
-    def get_training_callbacks(
-        self, training_callback_attributes: TrainingCallbackAttributes
-    ) -> List[TrainingCallback]:
-        cbs = []
-        cbs.append(TrainingCallback([TrainingCallbackLocation.BEFORE_TRAIN_ITERATION], self.step_cb))
-        # The order of these matters
-        cbs.append(
-            TrainingCallback(
-                [TrainingCallbackLocation.AFTER_TRAIN_ITERATION],
-                self.after_train,
-            )
-        )
-        cbs.append(
-            TrainingCallback(
-                [TrainingCallbackLocation.AFTER_TRAIN_ITERATION],
-                self.refinement_after,
-                update_every_num_iters=self.config.refine_every,
-                args=[training_callback_attributes.optimizers],
-            )
-        )
-        return cbs
 
     def step_cb(self, step):
         self.step = step
