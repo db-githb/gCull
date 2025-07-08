@@ -34,7 +34,6 @@ from torch.nn import Parameter
 from typing_extensions import Literal
 
 from nerfstudio.cameras.cameras import Cameras
-from nerfstudio.data.scene_box import OrientedBox
 from nerfstudio.engine.callbacks import TrainingCallback, TrainingCallbackAttributes, TrainingCallbackLocation
 from nerfstudio.engine.optimizers import Optimizers
 
@@ -235,7 +234,7 @@ class SplatfactoModel(Model):
         self.lpips = LearnedPerceptualImagePatchSimilarity(normalize=True)
         self.step = 0
 
-        self.crop_box: Optional[OrientedBox] = None
+        self.crop_box = None
 
     @property
     def colors(self):
@@ -398,9 +397,6 @@ class SplatfactoModel(Model):
                 self.max_2Dsize[visible_mask],
                 newradii / float(max(self.last_size[0], self.last_size[1])),
             )
-
-    def set_crop(self, crop_box: Optional[OrientedBox]):
-        self.crop_box = crop_box
 
     def set_background(self, background_color: torch.Tensor):
         assert background_color.shape == (3,)
@@ -872,7 +868,7 @@ class SplatfactoModel(Model):
         return loss_dict
 
     @torch.no_grad()
-    def get_outputs_for_camera(self, camera: Cameras, obb_box: Optional[OrientedBox] = None) -> Dict[str, torch.Tensor]:
+    def get_outputs_for_camera(self, camera: Cameras) -> Dict[str, torch.Tensor]:
         """Takes in a camera, generates the raybundle, and computes the output of the model.
         Overridden for a camera-based gaussian model.
 
@@ -880,7 +876,6 @@ class SplatfactoModel(Model):
             camera: generates raybundle
         """
         assert camera is not None, "must provide camera to gaussian model"
-        self.set_crop(obb_box)
         outs = self.get_outputs(camera.to(self.device))
         return outs  # type: ignore
 

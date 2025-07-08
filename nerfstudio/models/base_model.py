@@ -62,7 +62,6 @@ class Model(nn.Module):
 
     Args:
         config: configuration for instantiating model
-        scene_box: dataset scene box
     """
 
     config: ModelConfig
@@ -70,14 +69,11 @@ class Model(nn.Module):
     def __init__(
         self,
         config: ModelConfig,
-        scene_box,
         num_train_data: int,
         **kwargs,
     ) -> None:
         super().__init__()
         self.config = config
-        self.scene_box = scene_box
-        self.render_aabb = None  # the box that we want to render - should be a subset of scene_box
         self.num_train_data = num_train_data
         self.kwargs = kwargs
         self.collider = None
@@ -158,7 +154,7 @@ class Model(nn.Module):
         """
 
     @torch.no_grad()
-    def get_outputs_for_camera(self, camera: Cameras, obb_box = None) -> Dict[str, torch.Tensor]:
+    def get_outputs_for_camera(self, camera: Cameras) -> Dict[str, torch.Tensor]:
         """Takes in a camera, generates the raybundle, and computes the output of the model.
         Assumes a ray-based model.
 
@@ -166,7 +162,7 @@ class Model(nn.Module):
             camera: generates raybundle
         """
         return self.get_outputs_for_camera_ray_bundle(
-            camera.generate_rays(camera_indices=0, keep_shape=True, obb_box=obb_box)
+            camera.generate_rays(camera_indices=0, keep_shape=True)
         )
 
     @torch.no_grad()

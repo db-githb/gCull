@@ -36,7 +36,6 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from nerfstudio.configs.base_config import InstantiateConfig
 from nerfstudio.data.datamanagers.base_datamanager import DataManager, DataManagerConfig, VanillaDataManager
 from nerfstudio.data.datamanagers.full_images_datamanager import FullImageDatamanager
-from nerfstudio.data.datamanagers.parallel_datamanager import ParallelDataManager
 from nerfstudio.engine.callbacks import TrainingCallback, TrainingCallbackAttributes
 from nerfstudio.models.base_model import Model, ModelConfig
 
@@ -264,7 +263,6 @@ class VanillaPipeline(Pipeline):
         assert self.datamanager.train_dataset is not None, "Missing input dataset"
 
         self._model = config.model.setup(
-            scene_box=self.datamanager.train_dataset.scene_box,
             num_train_data=len(self.datamanager.train_dataset),
             metadata=self.datamanager.train_dataset.metadata,
             device=device,
@@ -351,7 +349,7 @@ class VanillaPipeline(Pipeline):
         """
         self.eval()
         metrics_dict_list = []
-        assert isinstance(self.datamanager, (VanillaDataManager, ParallelDataManager, FullImageDatamanager))
+        assert isinstance(self.datamanager, (VanillaDataManager, FullImageDatamanager))
         num_images = len(self.datamanager.fixed_indices_eval_dataloader)
         if output_path is not None:
             output_path.mkdir(exist_ok=True, parents=True)
@@ -412,15 +410,6 @@ class VanillaPipeline(Pipeline):
         }
         self.model.update_to_step(step)
         self.load_state_dict(state)
-
-    def get_training_callbacks(
-        self, training_callback_attributes: TrainingCallbackAttributes
-    ) -> List[TrainingCallback]:
-        """Returns the training callbacks from both the Dataloader and the Model."""
-        datamanager_callbacks = self.datamanager.get_training_callbacks(training_callback_attributes)
-        model_callbacks = self.model.get_training_callbacks(training_callback_attributes)
-        callbacks = datamanager_callbacks + model_callbacks
-        return callbacks
 
     def get_param_groups(self) -> Dict[str, List[Parameter]]:
         """Get the param groups for the pipeline.
