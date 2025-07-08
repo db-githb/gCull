@@ -29,14 +29,13 @@ from torch.nn import Parameter
 
 from nerfstudio.cameras.cameras import Cameras
 from nerfstudio.cameras.rays import RayBundle
-from nerfstudio.configs.base_config import InstantiateConfig
 from nerfstudio.configs.config_utils import to_immutable_dict
 
 
 
 # Model related configs
 @dataclass
-class ModelConfig(InstantiateConfig):
+class ModelConfig():
     """Configuration for model instantiation"""
 
     _target: Type = field(default_factory=lambda: Model)
@@ -125,109 +124,6 @@ class Model(nn.Module):
 
         return self.get_outputs(ray_bundle)
 
-    def get_metrics_dict(self, outputs, batch) -> Dict[str, torch.Tensor]:
-        """Compute and returns metrics.
-
-        Args:
-            outputs: the output to compute loss dict to
-            batch: ground truth batch corresponding to outputs
-        """
-
-        return {}
-
-    @abstractmethod
-    def get_loss_dict(self, outputs, batch, metrics_dict=None) -> Dict[str, torch.Tensor]:
-        """Computes and returns the losses dict.
-
-        Args:
-            outputs: the output to compute loss dict to
-            batch: ground truth batch corresponding to outputs
-            metrics_dict: dictionary of metrics, some of which we can use for loss
-        """
-
-    @torch.no_grad()
-    def get_outputs_for_camera(self, camera: Cameras) -> Dict[str, torch.Tensor]:
-        """Takes in a camera, generates the raybundle, and computes the output of the model.
-        Assumes a ray-based model.
-
-        Args:
-            camera: generates raybundle
-        """
-        return self.get_outputs_for_camera_ray_bundle(
-            camera.generate_rays(camera_indices=0, keep_shape=True)
-        )
-
-    @torch.no_grad()
-    def get_outputs_for_camera_ray_bundle(self, camera_ray_bundle: RayBundle) -> Dict[str, torch.Tensor]:
-        """Takes in camera parameters and computes the output of the model.
-
-        Args:
-            camera_ray_bundle: ray bundle to calculate outputs over
-        """
-        input_device = camera_ray_bundle.directions.device
-        num_rays_per_chunk = self.config.eval_num_rays_per_chunk
-        image_height, image_width = camera_ray_bundle.origins.shape[:2]
-        num_rays = len(camera_ray_bundle)
-        outputs_lists = defaultdict(list)
-        for i in range(0, num_rays, num_rays_per_chunk):
-            start_idx = i
-            end_idx = i + num_rays_per_chunk
-            ray_bundle = camera_ray_bundle.get_row_major_sliced_ray_bundle(start_idx, end_idx)
-            # move the chunk inputs to the model device
-            ray_bundle = ray_bundle.to(self.device)
-            outputs = self.forward(ray_bundle=ray_bundle)
-            for output_name, output in outputs.items():  # type: ignore
-                if not isinstance(output, torch.Tensor):
-                    # TODO: handle lists of tensors as well
-                    continue
-                # move the chunk outputs from the model device back to the device of the inputs.
-                outputs_lists[output_name].append(output.to(input_device))
-        outputs = {}
-        for output_name, outputs_list in outputs_lists.items():
-            outputs[output_name] = torch.cat(outputs_list).view(image_height, image_width, -1)  # type: ignore
-        return outputs
-
-    def get_rgba_image(self, outputs: Dict[str, torch.Tensor], output_name: str = "rgb") -> torch.Tensor:
-        """Returns the RGBA image from the outputs of the model.
-
-        Args:
-            outputs: Outputs of the model.
-
-        Returns:
-            RGBA image.
-        """
-        accumulation_name = output_name.replace("rgb", "accumulation")
-        if (
-            not hasattr(self, "renderer_rgb")
-            or not hasattr(self.renderer_rgb, "background_color")
-            or accumulation_name not in outputs
-        ):
-            raise NotImplementedError(f"get_rgba_image is not implemented for model {self.__class__.__name__}")
-        rgb = outputs[output_name]
-        if self.renderer_rgb.background_color == "random":  # type: ignore
-            acc = outputs[accumulation_name]
-            if acc.dim() < rgb.dim():
-                acc = acc.unsqueeze(-1)
-            return torch.cat((rgb / acc.clamp(min=1e-10), acc), dim=-1)
-        return torch.cat((rgb, torch.ones_like(rgb[..., :1])), dim=-1)
-
-    @abstractmethod
-    def get_image_metrics_and_images(
-        self, outputs: Dict[str, torch.Tensor], batch: Dict[str, torch.Tensor]
-    ) -> Tuple[Dict[str, float], Dict[str, torch.Tensor]]:
-        """Writes the test image outputs.
-        TODO: This shouldn't return a loss
-
-        Args:
-            image_idx: Index of the image.
-            step: Current step.
-            batch: Batch of data.
-            outputs: Outputs of the model.
-
-        Returns:
-            A dictionary of metrics.
-        """
-
     def load_model(self, loaded_state: Dict[str, Any]) -> None:
         """Load the checkpoint from the given path
 
@@ -236,11 +132,3 @@ class Model(nn.Module):
         """
         state = {key.replace("module.", ""): value for key, value in loaded_state["model"].items()}
         self.load_state_dict(state)  # type: ignore
-
-    def update_to_step(self, step: int) -> None:
-        """Called when loading a model from a checkpoint. Sets any model parameters that change over
-        training to the correct value, based on the training step of the checkpoint.
-
-        Args:
-            step: training step of the loaded checkpoint
-        """
