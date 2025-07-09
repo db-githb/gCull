@@ -3,9 +3,9 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "nerfstudio"
-version = "1.1.0"
-description = "All-in-one repository for state-of-the-art NeRFs"
+name = "gCull"
+version = "0.0.1"
+description = "Tool to clean noisy gaussians associated with a sky in 3DGS model"
 readme = "README.md"
 license = { text="Apache 2.0"}
 requires-python = ">=3.8.0"
@@ -69,7 +69,7 @@ dependencies = [
 ]
 
 [project.urls]
-"Documentation" = "https://docs.nerf.studio"
+"Documentation" = "https://github.com/db-githb/gCull"
 
 
 [project.optional-dependencies]
@@ -123,17 +123,8 @@ docs = [
 
 [project.scripts]
 # Note, add entrypoint name to nerfstudio/scripts/completions/install.py to include CLI completion
-ns-install-cli = "nerfstudio.scripts.completions.install:entrypoint"
-ns-process-data = "nerfstudio.scripts.process_data:entrypoint"
-ns-download-data = "nerfstudio.scripts.downloads.download_data:entrypoint"
-ns-train = "nerfstudio.scripts.train:entrypoint"
-ns-viewer = "nerfstudio.scripts.viewer.run_viewer:entrypoint"
-ns-eval = "nerfstudio.scripts.eval:entrypoint"
-ns-render = "nerfstudio.scripts.render:entrypoint"
-ns-export = "nerfstudio.scripts.exporter:entrypoint"
-ns-dev-test = "nerfstudio.scripts.github.run_actions:entrypoint"
-ns-dev-sync-viser-message-defs = "nerfstudio.scripts.viewer.sync_viser_message_defs:entrypoint"
-ns-cull = "nerfstudio.scripts.skycull:entrypoint"
+
+g-cull = "nerfstudio.main.gcull_main:entrypoint"
 
 [tool.setuptools.packages.find]
 include = ["nerfstudio*"]
