@@ -37,7 +37,6 @@ from gCullPY.utils.rich_utils import CONSOLE, ItersPerSecColumn
 from gCullPY.main.utils_main import setup_write_ply, write_ply, eval_setup
 from PIL import Image
 
-import matplotlib.pyplot as plt
 from gCullPY.main.utils_cull import get_cull_list
 
 from rich.progress import (
@@ -107,14 +106,6 @@ class DatasetCull(BaseCull):
     """Split to render."""
     
     def main(self):
-        def show_mask(bool_mask):
-            mask_np = bool_mask.cpu().numpy()   # convert to NumPy (H×W) array of True/False
-
-            plt.figure(figsize=(6,6))
-            plt.imshow(mask_np, cmap='gray', interpolation='nearest')
-            plt.title("Boolean Mask")
-            plt.axis('off') 
-            plt.show()
 
         def get_mask(camera_idx, mask_root):
             filepath = mask_root+"/masks/mask_"+str(camera_idx+1).zfill(4)+".png"
