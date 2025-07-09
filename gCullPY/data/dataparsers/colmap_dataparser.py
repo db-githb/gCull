@@ -27,17 +27,17 @@ import torch
 from PIL import Image
 from rich.prompt import Confirm
 
-from nerfstudio.cameras import camera_utils
-from nerfstudio.cameras.cameras import CAMERA_MODEL_TO_TYPE, Cameras
-from nerfstudio.data.dataparsers.base_dataparser import DataParser, DataParserConfig, DataparserOutputs
-from nerfstudio.data.utils import colmap_parsing_utils as colmap_utils
-from nerfstudio.data.utils.dataparsers_utils import (
+from gCullPY.cameras import camera_utils
+from gCullPY.cameras.cameras import CAMERA_MODEL_TO_TYPE, Cameras
+from gCullPY.data.dataparsers.base_dataparser import DataParser, DataParserConfig, DataparserOutputs
+from gCullPY.data.utils import colmap_parsing_utils as colmap_utils
+from gCullPY.data.utils.dataparsers_utils import (
     get_train_eval_split_all,
     get_train_eval_split_filename,
     get_train_eval_split_fraction,
     get_train_eval_split_interval,
 )
-from nerfstudio.utils.rich_utils import CONSOLE, status
+from gCullPY.utils.rich_utils import CONSOLE, status
 
 MAX_AUTO_RESOLUTION = 1600
 

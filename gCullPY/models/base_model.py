@@ -26,7 +26,7 @@ import torch
 from torch import nn
 from torch.nn import Parameter
 
-from nerfstudio.cameras.cameras import Cameras
+from gCullPY.cameras.cameras import Cameras
 # Model related configs
 @dataclass
 class ModelConfig():

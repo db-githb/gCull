@@ -24,7 +24,7 @@ from typing import Any, Callable, Dict, Union
 import torch
 import torch.utils.data
 
-from nerfstudio.cameras.cameras import Cameras
+from gCullPY.cameras.cameras import Cameras
 
 NERFSTUDIO_COLLATE_ERR_MSG_FORMAT = (
     "default_collate: batch must contain tensors, numpy arrays, numbers, " "dicts, lists or anything in {}; found {}"

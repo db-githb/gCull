@@ -29,8 +29,8 @@ from PIL import Image
 from torch import Tensor
 from torch.utils.data import Dataset
 
-from nerfstudio.cameras.cameras import Cameras
-from nerfstudio.data.dataparsers.base_dataparser import DataparserOutputs
+from gCullPY.cameras.cameras import Cameras
+from gCullPY.data.dataparsers.base_dataparser import DataparserOutputs
 
 class InputDataset(Dataset):
     """Dataset that returns images.

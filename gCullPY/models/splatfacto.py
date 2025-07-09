@@ -28,8 +28,8 @@ import torch
 from torch.nn import Parameter
 
 # need following import for background color override
-from nerfstudio.models.base_model import Model, ModelConfig
-from nerfstudio.utils.rich_utils import CONSOLE
+from gCullPY.models.base_model import Model, ModelConfig
+from gCullPY.utils.rich_utils import CONSOLE
 
 def num_sh_bases(degree: int):
     if degree == 0:

@@ -6,13 +6,13 @@ from typing_extensions import Literal, Tuple
 from collections import OrderedDict
 from pathlib import Path
 
-from nerfstudio.utils.rich_utils import CONSOLE
-from nerfstudio.pipelines.base_pipeline import Pipeline
-from nerfstudio.pipelines.base_pipeline import VanillaPipelineConfig
-from nerfstudio.data.datamanagers.full_images_datamanager import FullImageDatamanagerConfig
-from nerfstudio.models.splatfacto import SplatfactoModelConfig
-from nerfstudio.data.dataparsers.colmap_dataparser import ColmapDataParserConfig
-from nerfstudio.data.datasets.base_dataset import InputDataset
+from gCullPY.utils.rich_utils import CONSOLE
+from gCullPY.pipelines.base_pipeline import Pipeline
+from gCullPY.pipelines.base_pipeline import VanillaPipelineConfig
+from gCullPY.data.datamanagers.full_images_datamanager import FullImageDatamanagerConfig
+from gCullPY.models.splatfacto import SplatfactoModelConfig
+from gCullPY.data.dataparsers.colmap_dataparser import ColmapDataParserConfig
+from gCullPY.data.datasets.base_dataset import InputDataset
 
 def to_path(val):
         if isinstance(val, list):

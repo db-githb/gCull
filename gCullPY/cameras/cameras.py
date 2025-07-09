@@ -23,7 +23,7 @@ import torch
 from jaxtyping import Float, Int, Shaped
 from torch import Tensor
 
-from nerfstudio.utils.tensor_dataclass import TensorDataclass
+from gCullPY.utils.tensor_dataclass import TensorDataclass
 
 TORCH_DEVICE = Union[torch.device, str]
 

@@ -28,17 +28,17 @@ from typing import List, Literal, Optional
 import torch
 import tyro
 
-from typing_extensions import Annotated, Tuple
-from nerfstudio.pipelines.base_pipeline import VanillaPipelineConfig
-from nerfstudio.data.datamanagers.full_images_datamanager import FullImageDatamanager
-from nerfstudio.data.datasets.base_dataset import Dataset
-from nerfstudio.data.utils.dataloaders import FixedIndicesEvalDataloader
-from nerfstudio.utils.rich_utils import CONSOLE, ItersPerSecColumn
-from nerfstudio.main.utils_main import setup_write_ply, write_ply, eval_setup
+from typing_extensions import Annotated
+from gCullPY.pipelines.base_pipeline import VanillaPipelineConfig
+from gCullPY.data.datamanagers.full_images_datamanager import FullImageDatamanager
+from gCullPY.data.datasets.base_dataset import Dataset
+from gCullPY.data.utils.dataloaders import FixedIndicesEvalDataloader
+from gCullPY.utils.rich_utils import CONSOLE, ItersPerSecColumn
+from gCullPY.main.utils_main import setup_write_ply, write_ply, eval_setup
 from PIL import Image
 
 import matplotlib.pyplot as plt
-from nerfstudio.main.utils_cull import get_cull_list
+from gCullPY.main.utils_cull import get_cull_list
 
 from rich.progress import (
     BarColumn,

@@ -36,10 +36,10 @@ from torch import nn
 from torch.nn import Parameter
 from torch.utils.data.distributed import DistributedSampler
 from typing_extensions import TypeVar
-from nerfstudio.cameras.cameras import Cameras
-from nerfstudio.data.datasets.base_dataset import InputDataset
-from nerfstudio.data.utils.nerfstudio_collate import nerfstudio_collate
-from nerfstudio.utils.rich_utils import CONSOLE
+from gCullPY.cameras.cameras import Cameras
+from gCullPY.data.datasets.base_dataset import InputDataset
+from gCullPY.data.utils.nerfstudio_collate import nerfstudio_collate
+from gCullPY.utils.rich_utils import CONSOLE
 
 TDataset = TypeVar("TDataset", bound=InputDataset, default=InputDataset)
 

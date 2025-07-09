@@ -30,8 +30,8 @@ from torch import nn
 from torch.nn import Parameter
 from torch.nn.parallel import DistributedDataParallel as DDP
 
-from nerfstudio.data.datamanagers.base_datamanager import DataManager, DataManagerConfig
-from nerfstudio.models.base_model import Model, ModelConfig
+from gCullPY.data.datamanagers.base_datamanager import DataManager, DataManagerConfig
+from gCullPY.models.base_model import Model, ModelConfig
 
 
 def module_wrapper(ddp_or_model: Union[DDP, Model]) -> Model:

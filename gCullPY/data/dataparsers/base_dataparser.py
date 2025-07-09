@@ -26,7 +26,7 @@ import torch
 from jaxtyping import Float
 from torch import Tensor
 
-from nerfstudio.cameras.cameras import Cameras
+from gCullPY.cameras.cameras import Cameras
 
 
 @dataclass

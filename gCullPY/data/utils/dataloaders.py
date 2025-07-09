@@ -23,8 +23,8 @@ from typing import Dict, List, Optional, Tuple, Union, TypeVar
 import torch
 from torch.utils.data.dataloader import DataLoader
 
-from nerfstudio.cameras.cameras import Cameras
-from nerfstudio.data.datasets.base_dataset import InputDataset
+from gCullPY.cameras.cameras import Cameras
+from gCullPY.data.datasets.base_dataset import InputDataset
 
 T = TypeVar("T")
 
