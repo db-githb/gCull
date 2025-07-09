@@ -75,7 +75,7 @@ def eval_setup(
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     pipeline = config.setup(device=device, test_mode=test_mode)
     assert load_path.exists(), f"Checkpoint {load_path} does not exist"
-    loaded_state = torch.load(load_path, map_location="cpu")
+    loaded_state = torch.load(load_path, map_location="cpu",  weights_only=False)
     pipeline.load_pipeline(loaded_state["pipeline"], loaded_state["step"])
     CONSOLE.print(f":white_check_mark: Done loading checkpoint from {load_path}")
     
