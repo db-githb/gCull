@@ -21,14 +21,11 @@ import os
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Literal, Optional
+from typing import Optional
 
 import torch
-import tyro
-
-from typing_extensions import Annotated
 from gCullPY.pipelines.base_pipeline import VanillaPipelineConfig
 from gCullPY.data.datamanagers.full_images_datamanager import FullImageDatamanager
 from gCullPY.data.datasets.base_dataset import Dataset
@@ -37,7 +34,7 @@ from gCullPY.utils.rich_utils import CONSOLE, ItersPerSecColumn
 from gCullPY.main.utils_main import setup_write_ply, write_ply, eval_setup
 from PIL import Image
 
-from gCullPY.main.utils_cull import get_cull_list
+from gCullPY.main.utils_cull import get_mask, get_cull_list
 
 from rich.progress import (
     BarColumn,
@@ -58,7 +55,7 @@ class BaseCull:
 
     load_config: Path
     """Path to config YAML file."""
-    output_path: Path = Path("culled_models/output.ply")
+    output_dir: Path = Path("culled_models/output.ply")
     """Path to output model file."""
 
 
@@ -80,18 +77,12 @@ def _disable_datamanager_setup(cls):
 class DatasetCull(BaseCull):
     """Cull using all images in the dataset."""
 
-    data: Optional[Path] = None
-    """Override path to the dataset."""
+    mask_dir: Optional[Path] = None
+    #"""Override path to the dataset."""
     
-    def get_mask(self, camera_idx, mask_root):
-            filepath = mask_root / "masks" / f"mask_{camera_idx+1:04d}.png"
-            bool_mask = torch.tensor(np.array(Image.open(filepath))) == 0 # convert to bool tensor for ease of CUDA hand-off where black = True / non-black = False
-            #show_mask(bool_mask)
-            return bool_mask
-
-    def main(self):
-        self.split = "train+test"
-        self.downscale_factor = 1
+    # main/driver function
+    def run_cull(self):
+        downscale_factor = 1
         
         config, pipeline = eval_setup(
             self.load_config,
@@ -99,17 +90,17 @@ class DatasetCull(BaseCull):
         )
         assert isinstance(config, (VanillaPipelineConfig))
 
-        if self.downscale_factor is not None:
+        if downscale_factor is not None:
             dataparser = config.datamanager.dataparser
             if hasattr(dataparser, "downscale_factor"):
-                setattr(dataparser, "downscale_factor", self.downscale_factor)
+                setattr(dataparser, "downscale_factor", downscale_factor)
 
         root_dir = ""
         model = pipeline.model
         total_gauss = model.means.shape[0]
         cull_lst_master = torch.zeros(total_gauss, dtype=torch.bool)
 
-        for split in self.split.split("+"):
+        for split in "train+test".split("+"):
             datamanager: FullImageDatamanager
             dataset: Dataset
             if split == "train":
@@ -149,7 +140,7 @@ class DatasetCull(BaseCull):
                 for camera_idx, (camera, batch) in enumerate(progress.track(dataloader, total=len(dataset))):
                     with torch.no_grad():
                         camera.camera_to_worlds = camera.camera_to_worlds.squeeze() # splatoff rasterizer requires cam2world.shape = [3,4]
-                        bool_mask = self.get_mask(camera_idx, mask_root).to(pipeline.model.device)
+                        bool_mask = get_mask(camera_idx, mask_root).to(pipeline.model.device)
                         cull_lst = get_cull_list(model, camera, bool_mask)
                         cull_lst_master |= cull_lst.to("cpu")
                         #print(f"{camera_idx}: {cull_lst_master.sum().item()}")
@@ -179,23 +170,3 @@ class DatasetCull(BaseCull):
         )
         table.add_row(f"Final 3DGS model", linked_name)
         CONSOLE.print(Panel(table, title="[bold green]🎉 Cull Complete![/bold green] 🎉", expand=False))
-
-
-Commands = tyro.conf.FlagConversionOff[
-        Annotated[DatasetCull, tyro.conf.subcommand(name="cull-model")]
-]
-
-
-def entrypoint():
-    """Entrypoint for use with pyproject scripts."""
-    tyro.extras.set_accent_color("bright_yellow")
-    tyro.cli(Commands).main()
-
-
-if __name__ == "__main__":
-    entrypoint()
-
-
-def get_parser_fn():
-    """Get the parser function for the sphinx docs."""
-    return tyro.extras.get_parser(Commands)  # noqa

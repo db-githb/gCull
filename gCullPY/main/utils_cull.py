@@ -198,4 +198,8 @@ def get_cull_list(model, camera, bool_mask):
     
     return cull_lst
 
-
+def get_mask(camera_idx, mask_root):
+            filepath = mask_root / "masks" / f"mask_{camera_idx+1:04d}.png"
+            bool_mask = torch.tensor(np.array(Image.open(filepath))) == 0 # convert to bool tensor for ease of CUDA hand-off where black = True / non-black = False
+            #show_mask(bool_mask)
+            return bool_mask

@@ -1,12 +1,5 @@
 --extra-index-url https://download.pytorch.org/whl/cu118
-jaxtyping
-numpy
-opencv-python
-pillow
-pyyaml
-rich
-scikit-learn
-setuptools
+git+https://github.com/facebookresearch/segment-anything-2.git
+git+https://github.com/openai/CLIP.git
 torch==2.6.0
-typing_extensions
-tyro 
+torchvision==0.21.0

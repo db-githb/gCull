@@ -17,6 +17,8 @@ pip install -r requirements.txt
 pip install -e .
 cd gCullCUDA
 pip install -e .
+mkdir -p models
+wget https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_large.pt -P models
 ```
 
 ## 🎭 Mask Requirements

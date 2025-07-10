@@ -10,18 +10,14 @@
 *.egg-info
 *.dump
 build/
-
+models/
 outputs
-outputs_uncertainty
-renders
-tests
-processed
+/data/
 
 pixi.lock
 pixi.toml
 
 colab
-/data/
 docs
 
 *.log
