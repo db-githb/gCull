@@ -2,6 +2,11 @@
 
 A command-line tool to clean noisy Gaussian primitives associated with sky and clouds in 3D Gaussian Splatting (3DGS) reconstructions.
 
+<p align="center">
+  <img src="images/car_og.png" alt="Original 3DGS Reconstruction" width="45%" />
+  <img src="images/car_cull.png" alt="Culled 3DGS Model" width="45%" />
+</p>
+
 ## 💾 Installation
 
 ```bash

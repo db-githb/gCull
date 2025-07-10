@@ -164,7 +164,7 @@ class DatasetCull(BaseCull):
             pipeline.model.features_dc.data = model.features_dc[keep].clone()
             pipeline.model.features_rest.data = model.features_rest[keep].clone()
         
-        filename = root_dir / f"{root_dir.name}_culled.py"
+        filename = root_dir / f"{root_dir.name}_culled.ply"
         count, map_to_tensors = setup_write_ply(pipeline.model)
         write_ply(filename, count, map_to_tensors)
     
