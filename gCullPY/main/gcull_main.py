@@ -58,26 +58,8 @@ class BaseCull:
 
     load_config: Path
     """Path to config YAML file."""
-    output_path: Path = Path("renders/output.mp4")
-    """Path to output video file."""
-    image_format: Literal["jpeg", "png"] = "jpeg"
-    """Image format"""
-    jpeg_quality: int = 100
-    """JPEG quality"""
-    downscale_factor: float = 1.0
-    """Scaling factor to apply to the camera image resolution."""
-    eval_num_rays_per_chunk: Optional[int] = None
-    """Specifies number of rays per chunk during eval. If None, use the value in the config file."""
-    rendered_output_names: List[str] = field(default_factory=lambda: ["rgb"])
-    """Name of the renderer outputs to use. rgb, depth, etc. concatenates them along y axis"""
-    depth_near_plane: Optional[float] = None
-    """Closest depth to consider when using the colormap for depth. If None, use min value."""
-    depth_far_plane: Optional[float] = None
-    """Furthest depth to consider when using the colormap for depth. If None, use max value."""
-    render_nearest_camera: bool = False
-    """Whether to render the nearest training camera to the rendered camera."""
-    check_occlusions: bool = False
-    """If true, checks line-of-sight occlusions when computing camera distance and rejects cameras not visible to each other"""
+    output_path: Path = Path("culled_models/output.ply")
+    """Path to output model file."""
 
 
 @contextmanager
@@ -96,22 +78,20 @@ def _disable_datamanager_setup(cls):
 
 @dataclass
 class DatasetCull(BaseCull):
-    """Render all images in the dataset."""
+    """Cull using all images in the dataset."""
 
-    output_path: Path = Path("renders")
-    """Path to output video file."""
     data: Optional[Path] = None
     """Override path to the dataset."""
-    split: Literal["train", "val", "test", "train+test"] = "train" #hardcode both splits
-    """Split to render."""
     
-    def main(self):
-
-        def get_mask(camera_idx, mask_root):
-            filepath = mask_root+"/masks/mask_"+str(camera_idx+1).zfill(4)+".png"
+    def get_mask(self, camera_idx, mask_root):
+            filepath = mask_root / "masks" / f"mask_{camera_idx+1:04d}.png"
             bool_mask = torch.tensor(np.array(Image.open(filepath))) == 0 # convert to bool tensor for ease of CUDA hand-off where black = True / non-black = False
             #show_mask(bool_mask)
             return bool_mask
+
+    def main(self):
+        self.split = "train+test"
+        self.downscale_factor = 1
         
         config, pipeline = eval_setup(
             self.load_config,
@@ -152,7 +132,7 @@ class DatasetCull(BaseCull):
                 num_workers=datamanager.world_size * 4,
             )
             images_root = Path(os.path.commonpath(dataparser_outputs.image_filenames))
-            root_dir =  os.path.dirname(images_root)
+            root_dir =  images_root.parent
             mask_root = root_dir
             
             with Progress(
@@ -169,7 +149,7 @@ class DatasetCull(BaseCull):
                 for camera_idx, (camera, batch) in enumerate(progress.track(dataloader, total=len(dataset))):
                     with torch.no_grad():
                         camera.camera_to_worlds = camera.camera_to_worlds.squeeze() # splatoff rasterizer requires cam2world.shape = [3,4]
-                        bool_mask = get_mask(camera_idx, mask_root).to(pipeline.model.device)
+                        bool_mask = self.get_mask(camera_idx, mask_root).to(pipeline.model.device)
                         cull_lst = get_cull_list(model, camera, bool_mask)
                         cull_lst_master |= cull_lst.to("cpu")
                         #print(f"{camera_idx}: {cull_lst_master.sum().item()}")
@@ -183,24 +163,26 @@ class DatasetCull(BaseCull):
             pipeline.model.quats.data = model.quats[keep].clone()
             pipeline.model.features_dc.data = model.features_dc[keep].clone()
             pipeline.model.features_rest.data = model.features_rest[keep].clone()
-
-        filename = root_dir+"splat_mod.ply"
+        
+        filename = root_dir / f"{root_dir.name}_culled.py"
         count, map_to_tensors = setup_write_ply(pipeline.model)
         write_ply(filename, count, map_to_tensors)
-
+    
+        path = Path(filename)
+        dir = path.parent
+        linked_name = f"[link=file://{dir}/]{path.name}[/link]"
         table = Table(
             title=None,
             show_header=False,
             box=box.MINIMAL,
             title_style=style.Style(bold=True),
         )
-        for split in self.split.split("+"):
-            table.add_row(f"Outputs {split}", str(self.output_path / split))
-        CONSOLE.print(Panel(table, title="[bold][green]:tada: Cull on split {} Complete :tada:[/bold]", expand=False))
+        table.add_row(f"Final 3DGS model", linked_name)
+        CONSOLE.print(Panel(table, title="[bold green]🎉 Cull Complete![/bold green] 🎉", expand=False))
 
 
 Commands = tyro.conf.FlagConversionOff[
-        Annotated[DatasetCull, tyro.conf.subcommand(name="dataset")]
+        Annotated[DatasetCull, tyro.conf.subcommand(name="cull-model")]
 ]
 
 
