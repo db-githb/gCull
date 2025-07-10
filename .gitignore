@@ -2,8 +2,6 @@
 
 .*
 *__pycache__*
-**/__init__.py
-!ray_splat_renderer/ray_splat_renderer/__init__.py
 *.pyc
 *LICENSE
 *.o
@@ -20,19 +18,11 @@ renders
 tests
 processed
 
-Dockerfile
 pixi.lock
 pixi.toml
 
 colab
 /data/
 docs
-gsplat
 
-*.pt
 *.log
-
-*.csv
-*.ods
-
-README.md
