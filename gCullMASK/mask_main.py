@@ -7,7 +7,7 @@ import numpy as np
 from pathlib import Path
 from rich.console import Console
 
-from utils_mask import setup_mask, get_bounding_boxes, get_masks, disp_mask, sort_images
+from gCullMASK.utils_mask import setup_mask, get_bounding_boxes, get_masks, disp_mask, sort_images
 
 CONSOLE = Console()
 
@@ -18,7 +18,7 @@ class MaskProcessor:
     prompt: str = "sky",
     inspect: bool = False,
   ):
-    self.data_dir = data_dir
+    self.data_dir = Path(data_dir)
     self.prompt = prompt
     self.inspect = inspect
 
@@ -57,11 +57,10 @@ class MaskProcessor:
     return save_dir
 
 # main/driver function
-def run_mask_processing(data_dir, prompt, inspect):
-  mask_proc = MaskProcessor(data_dir, prompt, inspect)
-  image_paths = sort_images()
-  predictor, processor, dino = setup_mask()
-  mask_dir = mask_proc.mask_loop(image_paths, predictor, processor, dino)
+  def run_mask_processing(self):
+    image_paths = sort_images(self.data_dir)
+    predictor, processor, dino = setup_mask(self.data_dir)
+    mask_dir = self.mask_loop(image_paths, predictor, processor, dino)
 
-  linked_name = f"[link=file://{mask_dir}[/link]"
-  CONSOLE.print(f"🎉 Finished! 🎉 \n ✅ Inspect masks: {linked_name}")
+    linked_name = f"[link=file://{mask_dir}[/link]"
+    CONSOLE.print(f"🎉 Finished! 🎉 \n ✅ Inspect masks: {linked_name}")

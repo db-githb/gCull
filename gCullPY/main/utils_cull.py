@@ -1,4 +1,6 @@
 import torch
+import numpy as np
+from PIL import Image
 from gCullCUDA import GaussianCullSettings, GaussianCuller
 
 # taken from gaussian-opacity-fields
@@ -179,7 +181,7 @@ def get_cull_list(model, camera, bool_mask):
 
     means3D =  model.means
 
-    filter_3D = compute_3D_filter(model, camera,.2) #model.filter3D_scale, renderer) # compute_3D_filter per camera (GOF does it for each camera at the beginning of training)
+    filter_3D = compute_3D_filter(model, camera,.01) #model.filter3D_scale, renderer) # compute_3D_filter per camera (GOF does it for each camera at the beginning of training)
     opacity = get_opacity(model, filter_3D) 
     
     scales =   get_scaling(model, filter_3D) # self.get_scaling_with_3D_filter(self) # mip-splatting 3D filter from GOF 

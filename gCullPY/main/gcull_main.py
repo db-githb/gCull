@@ -155,12 +155,15 @@ class DatasetCull(BaseCull):
             pipeline.model.features_dc.data = model.features_dc[keep].clone()
             pipeline.model.features_rest.data = model.features_rest[keep].clone()
         
-        filename = root_dir / f"{root_dir.name}_culled.ply"
+        config_path = Path(self.load_config)
+        model_name = config_path.parent.name
+        experiment_name = config_path.parts[1]  # e.g., 'my-experiment'
+        filename = config_path.parent / f"{experiment_name}_{model_name}_culled.ply"
         count, map_to_tensors = setup_write_ply(pipeline.model)
         write_ply(filename, count, map_to_tensors)
     
         path = Path(filename)
-        dir = path.parent
+        dir = root_dir.parents[2] / path.parent
         linked_name = f"[link=file://{dir}/]{path.name}[/link]"
         table = Table(
             title=None,

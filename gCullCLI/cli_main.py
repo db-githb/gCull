@@ -1,6 +1,6 @@
 import argparse
 from gCullPY.main.gcull_main import DatasetCull
-from gCullMASK.mask_main import run_mask_processing
+from gCullMASK.mask_main import MaskProcessor
 
 def main():
     parser = argparse.ArgumentParser(prog="gcull", description="gCull image processing tools")
@@ -24,7 +24,8 @@ def main():
 
     args = parser.parse_args()
     if args.command == "process-masks":
-        run_mask_processing(args.data, args.output, prompt=args.prompt, device=args.device)
+        mp = MaskProcessor(args.data_dir, prompt=args.prompt, inspect=args.inspect)
+        mp.run_mask_processing()
 
     if args.command == "cull-model":
         dc = DatasetCull(args.load_config, mask_dir=args.mask_dir, output_dir=args.output_dir)

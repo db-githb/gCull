@@ -534,7 +534,7 @@ __global__ __launch_bounds__(BLOCK_X *BLOCK_Y)
 				float *view2gaussian_j = collected_view2gaussian + j * 16;
 
 				float3 scale_j = collected_scale[j];
-				float3 ray_point = {ray.x, ray.y, 0.9}; // consider using .9 for image plane to camera (ray.z)
+				float3 ray_point = {ray.x, ray.y, .9}; // consider using .9 for image plane to camera (ray.z)
 
 				// EQ.2 from GOF paper - camera pos is at zero in view space/coordinate system
 				float3 cam_pos_local = {view2gaussian_j[12], view2gaussian_j[13], view2gaussian_j[14]};									// translate camera center to gaussian's local coordinate system

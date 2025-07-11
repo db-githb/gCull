@@ -25,7 +25,7 @@ def eval_setup(
 ) -> Tuple[VanillaPipelineConfig, Pipeline]:
 
     # load save config
-    txt = config_path.read_text()
+    txt = Path(config_path).read_text()
     cleaned = re.sub(r'!+python/[^\s]+', '', txt)
     data = yaml.safe_load(cleaned)
     # Extract data root

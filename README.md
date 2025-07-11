@@ -9,31 +9,52 @@ A command-line tool to clean noisy Gaussian primitives associated with sky and c
 
 ## 💾 Installation
 
+### 1. Create & activate the Conda environment
 ```bash
 conda create -n gcull python=3.11 -c conda-forge
 conda activate gcull
+```
+### 2. Create & activate the Conda environment
+
+```bash
+# Change directories to project root (gCull/):
 cd <project-dir: gCull>
+
+# Install CUDA-enabled PyTorch, SAM2, & CLIP:
 pip install -r requirements.txt
+
+# Install the gCull package and its CLI entrypoints:
 pip install -e .
+```
+### 3. Install CUDA Backend
+```bash
 cd gCullCUDA
-pip install -e .
+pip install . 
+```
+
+### 4. Download SAM2 for semantic Masks
+```bash
 mkdir -p models
 wget https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_large.pt -P models
 ```
 
-## 🎭 Mask Requirements
+## 🎭 About Masks
 
-This tool requires binary mask files for training images:
+This tool uses binary masks to identify and remove unwanted Gaussian primitives (e.g., sky or clouds) from 3DGS reconstructions.
 
-- One binary mask per training image.
+- Masks are automatically generated using gcull process-masks.
 
-- Sky regions encoded as black (pixel value 0).
+- Each mask is a binary image where:
 
- - Non-sky regions encoded as white (pixel value 255).
+  - Black pixels (value 0) mark regions to remove.
 
-Place masks in data/<experiment-name>/masks/, ensuring mask filenames match their corresponding image filenames (e.g., frame_0001.png ↔ mask_0001.png).
+  - White pixels (value 255) mark regions to keep.
 
-## 📂 File Structure
+- Masks are saved to ```data/<experiment-name>/masks/``` and matched by filename to the corresponding images (e.g., frame_0001.png ↔ mask_0001.png).
+
+If you already have semantic masks or wish to use custom ones, you can place them directly in the masks/ folder following the same naming convention.
+
+## 📂 File Structure (Input Layout)
 
 The tool requires the following structure:
 
@@ -42,29 +63,76 @@ gCull/
 ├── data/
 │   └── <experiment-name>/
 │       ├── colmap/
-│       ├── images/
-│       ├── masks/
+│       ├── images/  ← put your source JPG/PNG files here
 │       └── transforms.json
+|
 ├── outputs/
 │   └── <experiment-name>/
 │       └── splatfacto/
 │           └── <model-name>/
-│               └── config.yml
+│               └── config.yml ← 3DGS YAML for `cull-model`
+├── models/
 ```
 
 ## 🚀 Execution
 
-Run the tool from the project root:
+From your project root, you now have two top-level commands:
 
 ```bash
-gcull --load-config <path/to/config.yml>
+# 1) Generate binary masks
+gcull process-masks \
+  --data_dir <path/to/images> [--prompt <prompt>] [--inspect]
+
+# 2) Cull Gaussians using those masks
+gcull cull-model \
+  --load-config <path/to/config.yml>
 ```
 
-## 📁 Output
+### Command details
+```process-masks```\
+Creates a binary mask for each image in --data_dir based on your prompt.
 
-The final culled model will be saved under the data folder as:
+- ```--data_dir <path/to/images>```\
+Directory containing input JPG/PNG images.
 
+- ```--prompt <"prompt">```\
+Class to detect (default: "sky").
+
+- ```--inspect``` (*optional boolean flag*)\
+If ```true```, displays the first mask and every 10th mask in a pop-up window before saving.
+Default: ```false```.
+
+<br>
+
+```cull-model```\
+Loads 3DGS YAML configuration and removes any Gaussians that intersect with pixel-rays cast from the black regions of the generated binary masks.
+
+- ```--load-config <path/to/config.yml>```\
+Path to the 3DGS model’s configuration file (YAML).
+
+## 📁   File Structure (Output + Results)
+
+### After ```process-masks``` runs
+
+```bash
+gCull/
+└── data/
+    └── <experiment-name>/
+        ├── colmap/
+        ├── images/
+        └── masks/  ← now populated with `mask_0001.png`, etc.
 ```
-<project-root>/data/<experiment-name>/<experiment-name>_culled.ply
+
+### After ```cull-model``` runs
+```bash
+gCull/
+└── outputs/
+    └── <experiment-name>/
+        └── splatfacto/
+            └── <model-name>/
+                ├── config.yml
+                └── {model_name}_{experiment_name}_culled.ply
 ```
+The final culled 3DGS model is saved alongside your ```config.yml``` as a ```.ply file```.
+
 

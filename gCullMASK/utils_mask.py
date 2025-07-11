@@ -1,7 +1,7 @@
 import os
 import torch
 import numpy as np
-import matplotlib as plt
+import matplotlib.pyplot  as plt
 
 from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection
 from sam2.build_sam import build_sam2
@@ -13,7 +13,7 @@ def setup_mask(data_dir):
   model_id = "IDEA-Research/grounding-dino-base"
   processor = AutoProcessor.from_pretrained(model_id)
   dino = AutoModelForZeroShotObjectDetection.from_pretrained(model_id).to("cuda").eval()
-  root = data_dir.parent / "models"
+  root = data_dir.parent.parent.parent / "models"
   root.mkdir(parents=True, exist_ok=True)
   sam2_checkpoint = root / "sam2.1_hiera_large.pt"
   model_cfg = "configs/sam2.1/sam2.1_hiera_l.yaml"
