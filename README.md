@@ -32,7 +32,7 @@ cd gCullCUDA
 pip install . 
 ```
 
-### 4. Download SAM2 for semantic Masks
+### 4. Download SAM2 weights for semantic masks
 ```bash
 mkdir -p models
 wget https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_large.pt -P models
