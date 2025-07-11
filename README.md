@@ -14,7 +14,7 @@ A command-line tool to clean noisy Gaussian primitives associated with sky and c
 conda create -n gcull python=3.11 -c conda-forge
 conda activate gcull
 ```
-### 2. Create & activate the Conda environment
+### 2. Install dependencies
 
 ```bash
 # Change directories to project root (gCull/):
@@ -63,7 +63,7 @@ gCull/
 ├── data/
 │   └── <experiment-name>/
 │       ├── colmap/
-│       ├── images/  ← put your source JPG/PNG files here
+│       ├── images/            ← put your source JPG/PNG files here
 │       └── transforms.json
 |
 ├── outputs/
@@ -71,7 +71,7 @@ gCull/
 │       └── splatfacto/
 │           └── <model-name>/
 │               └── config.yml ← 3DGS YAML for `cull-model`
-├── models/
+├── models/                    ← where SAM2 weights will be downloaded
 ```
 
 ## 🚀 Execution
@@ -131,7 +131,7 @@ gCull/
         └── splatfacto/
             └── <model-name>/
                 ├── config.yml
-                └── {model_name}_{experiment_name}_culled.ply
+                └── {model_name}_{experiment_name}_culled.ply  ← final output
 ```
 The final culled 3DGS model is saved alongside your ```config.yml``` as a ```.ply file```.
 
