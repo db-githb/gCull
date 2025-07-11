@@ -120,7 +120,7 @@ gCull/
     └── <experiment-name>/
         ├── colmap/
         ├── images/
-        └── masks/  ← now populated with `mask_0001.png`, etc.
+        └── masks/  ← now populated with `mask_0001.png`, `mask_0002.png`, etc.
 ```
 
 ### After ```cull-model``` runs
