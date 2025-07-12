@@ -34,6 +34,7 @@ pip install .
 
 ### 4. Download SAM2 weights for semantic masks
 ```bash
+cd ..  # Return to project root
 mkdir -p models
 wget https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_large.pt -P models
 ```
