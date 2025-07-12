@@ -24,7 +24,7 @@ cd <project-dir: gCull>
 pip install -r requirements.txt
 
 # Install the gCull package and its CLI entrypoints:
-pip install -e .
+pip install .
 ```
 ### 3. Install CUDA Backend
 ```bash
@@ -81,7 +81,7 @@ From your project root, you now have two top-level commands:
 ```bash
 # 1) Generate binary masks
 gcull process-masks \
-  --data_dir <path/to/images> [--prompt <prompt>] [--inspect]
+  --data-dir <path/to/images> [--prompt <prompt>] [--inspect]
 
 # 2) Cull Gaussians using those masks
 gcull cull-model \

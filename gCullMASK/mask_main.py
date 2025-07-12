@@ -62,5 +62,5 @@ class MaskProcessor:
     predictor, processor, dino = setup_mask(self.data_dir)
     mask_dir = self.mask_loop(image_paths, predictor, processor, dino)
 
-    linked_name = f"[link=file://{mask_dir}[/link]"
+    linked_name = f"[link=file://{mask_dir}]{mask_dir}[/link]"
     CONSOLE.print(f"🎉 Finished! 🎉 \n ✅ Inspect masks: {linked_name}")

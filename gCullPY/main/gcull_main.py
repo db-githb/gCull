@@ -32,7 +32,6 @@ from gCullPY.data.datasets.base_dataset import Dataset
 from gCullPY.data.utils.dataloaders import FixedIndicesEvalDataloader
 from gCullPY.utils.rich_utils import CONSOLE, ItersPerSecColumn
 from gCullPY.main.utils_main import setup_write_ply, write_ply, eval_setup
-from PIL import Image
 
 from gCullPY.main.utils_cull import get_mask, get_cull_list
 
