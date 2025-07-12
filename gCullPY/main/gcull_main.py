@@ -162,7 +162,7 @@ class DatasetCull(BaseCull):
         write_ply(filename, count, map_to_tensors)
     
         path = Path(filename)
-        dir = root_dir.parents[2] / path.parent
+        dir = root_dir.parents[1] / path.parent
         linked_name = f"[link=file://{dir}/]{path.name}[/link]"
         table = Table(
             title=None,
