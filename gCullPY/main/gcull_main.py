@@ -31,7 +31,7 @@ from gCullPY.data.datamanagers.full_images_datamanager import FullImageDatamanag
 from gCullPY.data.datasets.base_dataset import Dataset
 from gCullPY.data.utils.dataloaders import FixedIndicesEvalDataloader
 from gCullPY.utils.rich_utils import CONSOLE, ItersPerSecColumn
-from gCullPY.main.utils_main import setup_write_ply, write_ply, eval_setup
+from gCullPY.main.utils_main import setup_write_ply, write_ply, load_config, load_ply
 
 from gCullPY.main.utils_cull import get_mask, get_cull_list
 
@@ -51,9 +51,8 @@ from rich import box, style
 @dataclass
 class BaseCull:
     """Base class for rendering."""
-
-    load_config: Path
-    """Path to config YAML file."""
+    load_model: str
+    """Path to model file."""
     output_dir: Path = Path("culled_models/output.ply")
     """Path to output model file."""
 
@@ -83,10 +82,17 @@ class DatasetCull(BaseCull):
     def run_cull(self):
         downscale_factor = 1
         
-        config, pipeline = eval_setup(
-            self.load_config,
-            test_mode="inference",
-        )
+        model_path = Path(self.load_model)
+
+        ext = model_path.suffix.lower()
+
+        if ext == '.ply':
+            config, pipeline = load_ply(self.load_model)
+        else:
+            config, pipeline = load_config(
+                self.load_model,
+                test_mode="inference",
+            )
         assert isinstance(config, (VanillaPipelineConfig))
 
         if downscale_factor is not None:
@@ -154,7 +160,7 @@ class DatasetCull(BaseCull):
             pipeline.model.features_dc.data = model.features_dc[keep].clone()
             pipeline.model.features_rest.data = model.features_rest[keep].clone()
         
-        config_path = Path(self.load_config)
+        config_path = Path(self.load_model)
         model_name = config_path.parent.name
         experiment_name = config_path.parts[1]  # e.g., 'my-experiment'
         filename = config_path.parent / f"{experiment_name}_{model_name}_culled.ply"

@@ -20,12 +20,27 @@ conda activate gcull
 # Change directories to project root (gCull/):
 cd <project-dir: gCull>
 
-# Install CUDA-enabled PyTorch, SAM2, & CLIP:
+# Install SAM2, & CLIP:
 pip install -r requirements.txt
 
 # Install the gCull package and its CLI entrypoints:
 pip install .
 ```
+
+#### ⚠️ Torch + CUDA Compatibility
+Before proceeding, make sure your gcull environment contains a version of PyTorch that matches your installed CUDA toolkit.
+You can check your CUDA version with:
+
+```nvcc --version```
+
+Recommended combinations:
+
+- ✅ PyTorch 2.6.0 with CUDA 11.8
+
+- ✅ PyTorch 2.7.1 with CUDA 12.9
+
+To install the correct version, refer to: https://pytorch.org/get-started/locally/
+
 ### 3. Install CUDA Backend
 ```bash
 cd gCullCUDA
@@ -65,13 +80,14 @@ gCull/
 │   └── <experiment-name>/
 │       ├── colmap/
 │       ├── images/            ← put your source JPG/PNG files here
-│       └── transforms.json
+│       ├── transforms.json
+|       └── <model-name>.ply   ← if using gsplat trainer, place the exported PLY file here for `cull-model`
 |
 ├── outputs/
 │   └── <experiment-name>/
 │       └── splatfacto/
 │           └── <model-name>/
-│               └── config.yml ← 3DGS YAML for `cull-model`
+│               └── config.yml ← if using Splatfacto, point to this config file for `cull-model`
 ├── models/                    ← where SAM2 weights will be downloaded
 ```
 
@@ -86,7 +102,7 @@ gcull process-masks \
 
 # 2) Cull Gaussians using those masks
 gcull cull-model \
-  --load-config <path/to/config.yml>
+  --load-model <path/to/config.yml or .ply>
 ```
 
 ### Command details
@@ -100,7 +116,7 @@ Directory containing input JPG/PNG images.
 Class to detect (default: "sky").
 
 - ```--inspect``` (*optional boolean flag*)\
-If ```true```, displays the first mask and every 10th mask in a pop-up window before saving.
+If ```true```, displays first mask and every 10th mask in a pop-up window before saving.
 Default: ```false```.
 
 <br>
@@ -108,8 +124,8 @@ Default: ```false```.
 ```cull-model```\
 Loads 3DGS YAML configuration and removes any Gaussians that intersect with pixel-rays cast from the black regions of the generated binary masks.
 
-- ```--load-config <path/to/config.yml>```\
-Path to the 3DGS model’s configuration file (YAML).
+- ```--load-config <path/to/config.yml or .ply>```\
+Path to either a Splatfacto configuration file (config.yml) or a gsplat trainer output file (.ply).
 
 ## 📁   File Structure (Output + Results)
 

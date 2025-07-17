@@ -5,6 +5,7 @@ import os
 from typing_extensions import Literal, Tuple
 from collections import OrderedDict
 from pathlib import Path
+from plyfile import PlyData
 
 from gCullPY.utils.rich_utils import CONSOLE
 from gCullPY.pipelines.base_pipeline import Pipeline
@@ -19,7 +20,84 @@ def to_path(val):
             return Path(*val)
         return Path(val)
 
-def eval_setup(
+def load_ply(
+        ply_path: str
+):
+    data_path = Path(ply_path).parent
+    # 1) Define where your COLMAP data and images live.
+    colmap_parser = ColmapDataParserConfig(
+        colmap_path=(data_path / "colmap" / "sparse" / "0").resolve(),
+        images_path=(data_path / "images").resolve(),
+        load_3D_points=True,
+    )
+    colmap_parser.downscale_factor = 1
+
+    # 2) Build the datamanager config.
+    dm_conf = FullImageDatamanagerConfig(
+        data=data_path,
+        dataset=InputDataset,
+        dataparser=colmap_parser,
+        cache_images="cpu",
+        cache_images_type="uint8",
+        camera_res_scale_factor=1.0,
+    )
+
+    # 3) Define a SplatFacto model config.
+    model_conf = SplatfactoModelConfig(
+        random_init=False,
+        sh_degree=3,
+    )
+
+    # 4) Bundle into a vanilla pipeline config.
+    config = VanillaPipelineConfig(
+        datamanager=dm_conf,
+        model=model_conf,
+    )
+
+    # 5) Instantiate the pipeline.
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    pipeline = config.setup(device=device, test_mode="inference")
+
+    # 6) Read the PLY
+    ply = PlyData.read(str(ply_path))
+    verts = ply['vertex'].data
+
+    # 7) Extract arrays
+    means = torch.stack([
+        torch.tensor(verts[name])
+        for name in ('x','y','z')
+    ], dim=1)
+    scales = torch.stack([
+        torch.tensor(verts[f"scale_{i}"])
+        for i in range(3)
+    ], dim=1)
+    quats = torch.stack([
+        torch.tensor(verts[f"rot_{i}"])
+        for i in range(4)
+    ], dim=1)
+    opacities = torch.tensor(verts['opacity']).unsqueeze(-1) 
+    f_dc = torch.stack([
+        torch.tensor(verts[f"f_dc_{i}"]) 
+        for i in range(pipeline.model.config.sh_degree)
+    ],
+    dim=1)
+    f_rest = torch.stack([
+        torch.tensor(verts[f"f_rest_{i}"]) 
+        for i in range(45)
+    ],
+    dim=1).reshape(-1, 15, 3)
+
+    # 8) Override model parameters
+    pipeline.model.means.data = means.to(device)
+    pipeline.model.scales.data = scales.to(device)
+    pipeline.model.quats.data = quats.to(device)
+    pipeline.model.opacities.data = opacities.to(device)
+    pipeline.model.features_dc.data = f_dc.to(device)
+    pipeline.model.features_rest.data = f_rest.to(device)
+    
+    return config, pipeline
+
+def load_config(
     config_path: Path,
     test_mode: Literal["test", "val", "inference"] = "test",
 ) -> Tuple[VanillaPipelineConfig, Pipeline]:
