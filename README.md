@@ -126,7 +126,7 @@ Default: ```false```.
 ```cull-model```\
 Loads 3DGS YAML configuration and removes any Gaussians that intersect with pixel-rays cast from the black regions of the generated binary masks.
 
-- ```--load-config <path/to/config.yml or .ply>```\
+- ```--load-model <path/to/config.yml or .ply>```\
 Path to either a Splatfacto configuration file (config.yml) or a gsplat trainer output file (.ply).
 
 ## 📁   File Structure (Output + Results)
