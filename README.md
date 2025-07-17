@@ -11,7 +11,7 @@ A command-line tool to clean noisy Gaussian primitives associated with sky and c
 
 ### 1. Create & activate the Conda environment
 ```bash
-conda create -n gcull python=3.11 -c conda-forge
+conda create -n gcull python
 conda activate gcull
 ```
 ### 2. Install dependencies
@@ -20,7 +20,8 @@ conda activate gcull
 # Change directories to project root (gCull/):
 cd <project-dir: gCull>
 
-# Install SAM2, & CLIP:
+# Install SAM2, & CLIP
+# This will also install a CUDA-enabled version of PyTorch (based on pip defaults)
 pip install -r requirements.txt
 
 # Install the gCull package and its CLI entrypoints:
@@ -28,7 +29,8 @@ pip install .
 ```
 
 #### ⚠️ Torch + CUDA Compatibility
-Before proceeding, make sure your gcull environment contains a version of PyTorch that matches your installed CUDA toolkit.
+Installing SAM2 and CLIP will automatically install a CUDA-enabled version of PyTorch, typically built for the latest supported CUDA version.
+However, you should still ensure compatibility with your local CUDA drivers.
 You can check your CUDA version with:
 
 ```nvcc --version```
