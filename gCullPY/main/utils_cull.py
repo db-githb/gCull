@@ -151,7 +151,7 @@ def get_full_proj_transform(tanHalfFovX, tanHalfFovY, viewMat):
     return (viewMat.unsqueeze(0).bmm(projMat.transpose(0,1).unsqueeze(0))).squeeze(0)
 
 def get_cull_list(model, camera, bool_mask):
-    background = torch.ones(3, device=model.device) # get_background(model) - use white background to compare with bayes rays
+    background = torch.ones(3, device=model.device) # get_background(model)
     _ , T_inv = get_Rt_inv(model, camera)
     viewmat = get_viewmat(model, camera)
     tanHalfFovX, tanHalfFovY = get_tanHalfFov(camera)
