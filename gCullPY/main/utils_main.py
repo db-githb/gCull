@@ -29,6 +29,10 @@ def load_ply(
         colmap_path=(data_path / "colmap" / "sparse" / "0").resolve(),
         images_path=(data_path / "images").resolve(),
         load_3D_points=True,
+        assume_colmap_world_coordinate_convention=True,
+        auto_scale_poses=True,
+        center_method="poses",
+        downscale_factor=1
     )
     colmap_parser.downscale_factor = 1
 

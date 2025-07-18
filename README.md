@@ -129,6 +129,8 @@ Loads 3DGS YAML configuration and removes any Gaussians that intersect with pixe
 - ```--load-model <path/to/config.yml or .ply>```\
 Path to either a Splatfacto configuration file (config.yml) or a gsplat trainer output file (.ply).
 
+**Compatibility Note**: The cull-model command works best with Splatfacto configuration files (config.yml). It may not perform as well when provided with .ply files exported from the gsplat simple_trainer.
+
 ## 📁   File Structure (Output + Results)
 
 ### After ```process-masks``` runs
@@ -154,4 +156,7 @@ gCull/
 ```
 The final culled 3DGS model is saved alongside your ```config.yml``` as a ```.ply file```.
 
+## 🛠️ Acknowledgements
+
+This work is built upon and heavily modifies the Nerfstudio/Splatfacto/gsplat codebases.
 
