@@ -32,7 +32,7 @@ def load_ply(
         assume_colmap_world_coordinate_convention=True,
         auto_scale_poses=True,
         center_method="poses",
-        downscale_factor=1
+        downscale_factor=4 # simple_trainer from gsplat sets data_factor to 4
     )
     colmap_parser.downscale_factor = 1
 
