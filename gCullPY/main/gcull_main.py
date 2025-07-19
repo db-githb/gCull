@@ -102,6 +102,7 @@ class DatasetCull(BaseCull):
 
         root_dir = ""
         model = pipeline.model
+
         total_gauss = model.means.shape[0]
         cull_lst_master = torch.zeros(total_gauss, dtype=torch.bool)
 
@@ -145,7 +146,7 @@ class DatasetCull(BaseCull):
                 for camera_idx, (camera, batch) in enumerate(progress.track(dataloader, total=len(dataset))):
                     with torch.no_grad():
                         camera.camera_to_worlds = camera.camera_to_worlds.squeeze() # splatoff rasterizer requires cam2world.shape = [3,4]
-                        bool_mask = get_mask(camera_idx, mask_root).to(pipeline.model.device)
+                        bool_mask = get_mask(camera_idx, mask_root)
                         cull_lst = get_cull_list(model, camera, bool_mask)
                         cull_lst_master |= cull_lst.to("cpu")
                         #print(f"{camera_idx}: {cull_lst_master.sum().item()}")
