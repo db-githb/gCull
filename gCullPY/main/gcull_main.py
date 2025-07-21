@@ -53,6 +53,8 @@ class BaseCull:
     """Base class for rendering."""
     load_model: str
     """Path to model file."""
+    downscale_factor: int
+    """ Factor by which to downsample the model before culling (e.g., 2 = half resolution). """
     output_dir: Path = Path("culled_models/output.ply")
     """Path to output model file."""
 
@@ -80,8 +82,7 @@ class DatasetCull(BaseCull):
     
     # main/driver function
     def run_cull(self):
-        downscale_factor = 1
-        
+       
         model_path = Path(self.load_model)
 
         ext = model_path.suffix.lower()
@@ -95,13 +96,14 @@ class DatasetCull(BaseCull):
             )
         assert isinstance(config, (VanillaPipelineConfig))
 
-        if downscale_factor is not None:
+        if self.downscale_factor is not None:
             dataparser = config.datamanager.dataparser
             if hasattr(dataparser, "downscale_factor"):
-                setattr(dataparser, "downscale_factor", downscale_factor)
+                setattr(dataparser, "downscale_factor", self.downscale_factor)
 
         root_dir = ""
         model = pipeline.model
+        model.downscale_factor = self.downscale_factor
 
         total_gauss = model.means.shape[0]
         cull_lst_master = torch.zeros(total_gauss, dtype=torch.bool)
@@ -130,7 +132,10 @@ class DatasetCull(BaseCull):
             )
             images_root = Path(os.path.commonpath(dataparser_outputs.image_filenames))
             root_dir =  images_root.parent
-            mask_root = root_dir
+            if self.downscale_factor > 1:
+                mask_root = root_dir / f"masks_{self.downscale_factor}"
+            else:
+                mask_root = root_dir / "masks"
             
             with Progress(
                 TextColumn(f"\u2702\ufe0f\u00A0 Culling split {split} \u2702\ufe0f\u00A0"),

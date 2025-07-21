@@ -470,7 +470,7 @@ class ColmapDataParser(DataParser):
         meta = self._get_all_images_and_cameras(colmap_path)
         camera_type = CAMERA_MODEL_TO_TYPE[meta["camera_model"]]
 
-        image_filenames = []
+        mask_filenames = []
         poses = []
 
         fx = []
@@ -499,7 +499,12 @@ class ColmapDataParser(DataParser):
                 )
             )
 
-            image_filenames.append(Path(frame["file_path"]))
+            image_path = Path(frame["file_path"])
+            mask_dir = image_path.parents[1] / 'masks'
+            mask_name = image_path.name.replace('frame_', 'mask_')
+            mask_path = mask_dir / mask_name
+
+            mask_filenames.append(mask_path)
             poses.append(frame["transform_matrix"])
             
         poses = torch.from_numpy(np.array(poses).astype(np.float32))
@@ -517,9 +522,9 @@ class ColmapDataParser(DataParser):
         poses[:, :3, 3] *= scale_factor
 
         # Choose image_filenames and poses based on split, but after auto orient and scaling the poses.
-        indices = self._get_image_indices(image_filenames, split)
-        image_filenames, downscale_factor = self._setup_downscale_factor(image_filenames)
-        image_filenames = [image_filenames[i] for i in indices]
+        indices = self._get_image_indices(mask_filenames, split)
+        mask_filenames, downscale_factor = self._setup_downscale_factor(mask_filenames)
+        mask_filenames = [mask_filenames[i] for i in indices]
   
 
         idx_tensor = torch.tensor(indices, dtype=torch.long)
@@ -564,7 +569,7 @@ class ColmapDataParser(DataParser):
             metadata.update(self._load_3D_points(colmap_path, transform_matrix, scale_factor))
 
         dataparser_outputs = DataparserOutputs(
-            image_filenames=image_filenames,
+            image_filenames=mask_filenames,
             cameras=cameras,
             dataparser_scale=scale_factor,
             dataparser_transform=transform_matrix,
@@ -676,7 +681,7 @@ class ColmapDataParser(DataParser):
         CONSOLE.log("[bold green]:tada: Done downscaling images.")
 
     def _setup_downscale_factor(
-        self, image_filenames: List[Path]
+        self, mask_filenames: List[Path]
     ):
         """
         Setup the downscale factor for the dataset. This is used to downscale the images and cameras.
@@ -688,7 +693,8 @@ class ColmapDataParser(DataParser):
             base_part = parent.parent / (str(parent.name) + f"_{self._downscale_factor}")
             return base_part / rel_part
 
-        filepath = next(iter(image_filenames))
+        parent_path = Path(self.config.data / "masks").resolve(strict=False)
+        filepath = next(iter(mask_filenames))
         if self._downscale_factor is None:
             if self.config.downscale_factor is None:
                 test_img = Image.open(filepath)
@@ -705,7 +711,7 @@ class ColmapDataParser(DataParser):
             else:
                 self._downscale_factor = int(self.config.downscale_factor)
             if self._downscale_factor > 1 and not all(
-                get_fname(self.config.data / self.config.images_path, fp).parent.exists() for fp in image_filenames
+                get_fname(parent_path, fp).parent.exists() for fp in mask_filenames
             ):
                 # Downscaled images not found
                 # Ask if user wants to downscale the images automatically here
@@ -719,8 +725,8 @@ class ColmapDataParser(DataParser):
                 ):
                     # Install the method
                     self._downscale_images(
-                        image_filenames,
-                        partial(get_fname, self.config.data / self.config.images_path),
+                        mask_filenames,
+                        partial(get_fname, parent_path),
                         self._downscale_factor,
                         self.config.downscale_rounding_mode,
                         nearest_neighbor=False,
@@ -730,7 +736,7 @@ class ColmapDataParser(DataParser):
 
         # Return transformed filenames
         if self._downscale_factor > 1:
-            image_filenames = [get_fname(self.config.data / self.config.images_path, fp) for fp in image_filenames]
+            mask_filenames = [get_fname(parent_path, fp) for fp in mask_filenames]
 
         assert isinstance(self._downscale_factor, int)
-        return image_filenames, self._downscale_factor
+        return mask_filenames, self._downscale_factor

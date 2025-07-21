@@ -157,9 +157,8 @@ def get_cull_list(model, camera, bool_mask):
     tanHalfFovX, tanHalfFovY = get_tanHalfFov(camera)
     
     # use this for post-rendering image filters
-    scale_img = 1
-    height =int(camera.height.item())*scale_img
-    width = int(camera.width.item())*scale_img
+    height =int(camera.height.item())
+    width = int(camera.width.item())
 
     cull_settings = GaussianCullSettings(
         image_height= height,
@@ -201,7 +200,7 @@ def get_cull_list(model, camera, bool_mask):
     return cull_lst
 
 def get_mask(camera_idx, mask_root):
-            filepath = mask_root / "masks" / f"mask_{camera_idx+1:05d}.png"
+            filepath = mask_root / f"mask_{camera_idx+1:05d}.png"
             bool_mask = torch.tensor(np.array(Image.open(filepath))) == 0 # convert to bool tensor for ease of CUDA hand-off where black = True / non-black = False
             #show_mask(bool_mask)
             return bool_mask
