@@ -42,7 +42,7 @@ from gCullPY.data.datamanagers.base_datamanager import DataManager, DataManagerC
 from gCullPY.data.dataparsers.base_dataparser import DataparserOutputs
 from gCullPY.data.dataparsers.colmap_dataparser import ColmapDataParserConfig
 from gCullPY.data.datasets.base_dataset import InputDataset
-from gCullPY.utils.rich_utils import CONSOLE
+from gCullUTILS.rich_utils import CONSOLE
 from pathlib import Path
 
 @dataclass

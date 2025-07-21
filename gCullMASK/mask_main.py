@@ -1,15 +1,12 @@
 import cv2
 import os
 from tqdm import tqdm
-
 from PIL import Image
 import numpy as np
 from pathlib import Path
-from rich.console import Console
 
-from gCullMASK.utils_mask import setup_mask, get_bounding_boxes, get_masks, disp_mask, sort_images
-
-CONSOLE = Console()
+from gCullUTILS.rich_utils import CONSOLE
+from gCullMASK.utils_mask import setup_mask, get_bounding_boxes, get_masks, disp_mask, process_images
 
 class MaskProcessor:
   def __init__(
@@ -22,12 +19,14 @@ class MaskProcessor:
     self.prompt = prompt
     self.inspect = inspect
 
-  def mask_loop(self, image_paths, predictor, processor, dino):
-    
-    save_dir = self.data_dir.parent / "masks"
+  def mask_loop(self, downscale_factor, image_paths, predictor, processor, dino):
+    if downscale_factor > 1:
+       save_dir = self.data_dir.parent / f"masks_{downscale_factor}"
+    else:
+      save_dir = self.data_dir.parent / "masks"
     save_dir.mkdir(parents=True, exist_ok=True)
 
-    for idx, img_path in tqdm(enumerate(image_paths), total=len(image_paths), desc="Producing Masks", disable=False):
+    for idx, img_path in tqdm(enumerate(image_paths), total=len(image_paths), desc="Producing Masks", colour='GREEN', disable=False):
         # Load image
         image = cv2.imread(img_path)
         image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -58,9 +57,9 @@ class MaskProcessor:
 
 # main/driver function
   def run_mask_processing(self):
-    image_paths = sort_images(self.data_dir)
+    image_paths, df = process_images(self.data_dir)
     predictor, processor, dino = setup_mask(self.data_dir)
-    save_dir = self.mask_loop(image_paths, predictor, processor, dino)
+    save_dir = self.mask_loop(df, image_paths, predictor, processor, dino)
     mask_dir = Path(save_dir).resolve()
     linked_name = f"[link=file://{mask_dir}]{mask_dir}[/link]"
-    CONSOLE.print(f"🎉 Finished! 🎉 \n ✅ Inspect masks: {linked_name}")
+    CONSOLE.log(f"🎉 Finished! 🎉 \n ✅ Inspect masks: {linked_name}")

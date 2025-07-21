@@ -16,7 +16,6 @@ def compute_3D_filter(model, camera, s):
     # transform points to camera space - GOF grabs rotation and translation from input file which is just colmap data
     camera_to_world = camera.camera_to_worlds
 
-
     device = camera_to_world.device.type
     R = camera_to_world[:3, :3].T # 3 x 3
     T = camera_to_world[:3, 3:4] * -1 # 3 x 1

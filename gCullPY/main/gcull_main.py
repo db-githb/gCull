@@ -30,10 +30,10 @@ from gCullPY.pipelines.base_pipeline import VanillaPipelineConfig
 from gCullPY.data.datamanagers.full_images_datamanager import FullImageDatamanager
 from gCullPY.data.datasets.base_dataset import Dataset
 from gCullPY.data.utils.dataloaders import FixedIndicesEvalDataloader
-from gCullPY.utils.rich_utils import CONSOLE, ItersPerSecColumn
+from gCullUTILS.rich_utils import CONSOLE, ItersPerSecColumn
 from gCullPY.main.utils_main import setup_write_ply, write_ply, load_config, load_ply
-
 from gCullPY.main.utils_cull import get_mask, get_cull_list
+from gCullUTILS.utils import get_downscale_dir
 
 from rich.progress import (
     BarColumn,
@@ -45,7 +45,6 @@ from rich.progress import (
 )
 from rich.panel import Panel
 from rich.table import Table
-import numpy as np
 from rich import box, style
 
 @dataclass
@@ -101,9 +100,16 @@ class DatasetCull(BaseCull):
             if hasattr(dataparser, "downscale_factor"):
                 setattr(dataparser, "downscale_factor", self.downscale_factor)
 
-        root_dir = ""
+        root = config.datamanager.data
+        downscale_factor = config.datamanager.dataparser.downscale_factor 
+        if downscale_factor > 1:
+            mask_dir = root / f"masks_{downscale_factor}"
+        else:
+            mask_dir = root / "masks"
+            ""
         model = pipeline.model
-        model.downscale_factor = self.downscale_factor
+        #mask_dir, downscale_factor = get_downscale_dir(mask_root)
+        model.downscale_factor = downscale_factor
 
         total_gauss = model.means.shape[0]
         cull_lst_master = torch.zeros(total_gauss, dtype=torch.bool)
@@ -130,12 +136,6 @@ class DatasetCull(BaseCull):
                 device=datamanager.device,
                 num_workers=datamanager.world_size * 4,
             )
-            images_root = Path(os.path.commonpath(dataparser_outputs.image_filenames))
-            root_dir =  images_root.parent
-            if self.downscale_factor > 1:
-                mask_root = root_dir / f"masks_{self.downscale_factor}"
-            else:
-                mask_root = root_dir / "masks"
             
             with Progress(
                 TextColumn(f"\u2702\ufe0f\u00A0 Culling split {split} \u2702\ufe0f\u00A0"),
@@ -151,12 +151,12 @@ class DatasetCull(BaseCull):
                 for camera_idx, (camera, batch) in enumerate(progress.track(dataloader, total=len(dataset))):
                     with torch.no_grad():
                         camera.camera_to_worlds = camera.camera_to_worlds.squeeze() # splatoff rasterizer requires cam2world.shape = [3,4]
-                        bool_mask = get_mask(camera_idx, mask_root)
+                        bool_mask = get_mask(camera_idx, mask_dir)
                         cull_lst = get_cull_list(model, camera, bool_mask)
                         cull_lst_master |= cull_lst.to("cpu")
                         #print(f"{camera_idx}: {cull_lst_master.sum().item()}")
 
-        print(f"Total culled: {cull_lst_master.sum().item()}/{total_gauss}")
+        CONSOLE.log(f"Total culled: {cull_lst_master.sum().item()}/{total_gauss}")
         keep = ~cull_lst_master
         with torch.no_grad():
             pipeline.model.means.data = model.means[keep].clone()
@@ -174,7 +174,7 @@ class DatasetCull(BaseCull):
         write_ply(filename, count, map_to_tensors)
     
         path = Path(filename)
-        dir = root_dir.parents[1] / path.parent
+        dir = root.parents[1] / path.parent
         linked_name = f"[link=file://{dir}/]{path.name}[/link]"
         table = Table(
             title=None,

@@ -7,7 +7,7 @@ from collections import OrderedDict
 from pathlib import Path
 from plyfile import PlyData
 
-from gCullPY.utils.rich_utils import CONSOLE
+from gCullUTILS.rich_utils import CONSOLE
 from gCullPY.pipelines.base_pipeline import Pipeline
 from gCullPY.pipelines.base_pipeline import VanillaPipelineConfig
 from gCullPY.data.datamanagers.full_images_datamanager import FullImageDatamanagerConfig
@@ -125,7 +125,7 @@ def load_config(
         assume_colmap_world_coordinate_convention=True,
         auto_scale_poses=True,
         center_method="poses",
-        downscale_factor=1
+        downscale_factor=data["pipeline"]["datamanager"]["dataparser"]["downscale_factor"]
     )
 
     # Build datamanager config
@@ -143,7 +143,7 @@ def load_config(
         model=SplatfactoModelConfig(),
     )
 
-    CONSOLE.print("Loading latest checkpoint from load_dir")
+    CONSOLE.log("Loading latest checkpoint from load_dir")
     output_dir = to_path(data["output_dir"])
     experiment_name = data["experiment_name"]
     method_name = data["method_name"]

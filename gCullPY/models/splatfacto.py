@@ -29,7 +29,7 @@ from torch.nn import Parameter
 
 # need following import for background color override
 from gCullPY.models.base_model import Model, ModelConfig
-from gCullPY.utils.rich_utils import CONSOLE
+from gCullUTILS.rich_utils import CONSOLE
 
 def num_sh_bases(degree: int):
     if degree == 0:

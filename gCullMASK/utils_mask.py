@@ -2,10 +2,11 @@ import os
 import torch
 import numpy as np
 import matplotlib.pyplot  as plt
-
 from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection
 from sam2.build_sam import build_sam2
 from sam2.sam2_image_predictor import SAM2ImagePredictor
+
+from gCullUTILS.utils import get_downscale_dir
 
 def setup_mask(data_dir):
   device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -54,11 +55,12 @@ def disp_mask(image_rgb, binary_mask):
     plt.axis("off")
     plt.show()
 
-def sort_images(data_dir):
-   root = data_dir #"/content/drive/My Drive/discord_car/"
-   image_paths = sorted([
-       os.path.join(root, f)
-       for f in os.listdir(root)
-       if f.lower().endswith(('.jpg', '.jpeg', '.png'))
-   ])
-   return image_paths
+def process_images(data_dir):
+  root = data_dir #"/content/drive/My Drive/discord_car/"
+  image_dir, downscale_factor = get_downscale_dir(root)
+  image_paths = sorted([
+      os.path.join(image_dir, f)
+      for f in os.listdir(image_dir)
+      if f.lower().endswith(('.jpg', '.jpeg', '.png'))
+  ])
+  return image_paths, downscale_factor

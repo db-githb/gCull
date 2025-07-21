@@ -37,8 +37,8 @@ from gCullPY.data.utils.dataparsers_utils import (
     get_train_eval_split_fraction,
     get_train_eval_split_interval,
 )
-from gCullPY.utils.rich_utils import CONSOLE, status
-
+from gCullUTILS.rich_utils import CONSOLE, status
+from gCullUTILS.utils import compute_downscale_factor, downscale_paths
 MAX_AUTO_RESOLUTION = 1600
 
 class CameraModel(Enum):
@@ -526,7 +526,6 @@ class ColmapDataParser(DataParser):
         mask_filenames, downscale_factor = self._setup_downscale_factor(mask_filenames)
         mask_filenames = [mask_filenames[i] for i in indices]
   
-
         idx_tensor = torch.tensor(indices, dtype=torch.long)
         poses = poses[idx_tensor]
 
@@ -695,44 +694,17 @@ class ColmapDataParser(DataParser):
 
         parent_path = Path(self.config.data / "masks").resolve(strict=False)
         filepath = next(iter(mask_filenames))
+
         if self._downscale_factor is None:
             if self.config.downscale_factor is None:
-                test_img = Image.open(filepath)
-                w, h = test_img.size
-                max_res = max(h, w)
-                df = 0
-                while True:
-                    if (max_res / 2 ** (df)) <= MAX_AUTO_RESOLUTION:
-                        break
-                    df += 1
-
-                self._downscale_factor = 2**df
-                CONSOLE.log(f"Using image downscale factor of {self._downscale_factor}")
+                self._downscale_factor = compute_downscale_factor(filepath)
             else:
                 self._downscale_factor = int(self.config.downscale_factor)
             if self._downscale_factor > 1 and not all(
                 get_fname(parent_path, fp).parent.exists() for fp in mask_filenames
             ):
-                # Downscaled images not found
-                # Ask if user wants to downscale the images automatically here
-                CONSOLE.print(
-                    f"[bold red]Downscaled images do not exist for factor of {self._downscale_factor}.[/bold red]"
-                )
-                if Confirm.ask(
-                    f"\nWould you like to downscale the images using '{self.config.downscale_rounding_mode}' rounding mode now?",
-                    default=False,
-                    console=CONSOLE,
-                ):
-                    # Install the method
-                    self._downscale_images(
-                        mask_filenames,
-                        partial(get_fname, parent_path),
-                        self._downscale_factor,
-                        self.config.downscale_rounding_mode,
-                        nearest_neighbor=False,
-                    )
-                else:
-                    sys.exit(1)
+                CONSOLE.log(f"[bold yellow] Using downscale factor of [bold red] {self._downscale_factor}")
+                downscale_paths(mask_filenames, self._downscale_factor)
 
         # Return transformed filenames
         if self._downscale_factor > 1:

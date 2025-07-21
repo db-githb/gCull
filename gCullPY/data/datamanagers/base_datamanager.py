@@ -38,7 +38,7 @@ from typing_extensions import TypeVar
 from gCullPY.cameras.cameras import Cameras
 from gCullPY.data.datasets.base_dataset import InputDataset
 from gCullPY.data.utils.nerfstudio_collate import nerfstudio_collate
-from gCullPY.utils.rich_utils import CONSOLE
+from gCullUTILS.rich_utils import CONSOLE
 
 TDataset = TypeVar("TDataset", bound=InputDataset, default=InputDataset)
 
