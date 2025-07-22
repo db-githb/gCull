@@ -33,7 +33,6 @@ from gCullPY.data.utils.dataloaders import FixedIndicesEvalDataloader
 from gCullUTILS.rich_utils import CONSOLE, ItersPerSecColumn
 from gCullPY.main.utils_main import setup_write_ply, write_ply, load_config, load_ply
 from gCullPY.main.utils_cull import get_mask, get_cull_list
-from gCullUTILS.utils import get_downscale_dir
 
 from rich.progress import (
     BarColumn,
@@ -95,20 +94,13 @@ class DatasetCull(BaseCull):
             )
         assert isinstance(config, (VanillaPipelineConfig))
 
-        if self.downscale_factor is not None:
-            dataparser = config.datamanager.dataparser
-            if hasattr(dataparser, "downscale_factor"):
-                setattr(dataparser, "downscale_factor", self.downscale_factor)
-
         root = config.datamanager.data
         downscale_factor = config.datamanager.dataparser.downscale_factor 
         if downscale_factor > 1:
             mask_dir = root / f"masks_{downscale_factor}"
         else:
             mask_dir = root / "masks"
-            ""
         model = pipeline.model
-        #mask_dir, downscale_factor = get_downscale_dir(mask_root)
         model.downscale_factor = downscale_factor
 
         total_gauss = model.means.shape[0]
@@ -183,4 +175,4 @@ class DatasetCull(BaseCull):
             title_style=style.Style(bold=True),
         )
         table.add_row(f"Final 3DGS model", linked_name)
-        CONSOLE.print(Panel(table, title="[bold green]🎉 Cull Complete![/bold green] 🎉", expand=False))
+        CONSOLE.log(Panel(table, title="[bold green]🎉 Cull Complete![/bold green] 🎉", expand=False))

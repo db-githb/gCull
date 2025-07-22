@@ -4,6 +4,9 @@ from tqdm import tqdm
 from PIL import Image
 import numpy as np
 from pathlib import Path
+from rich.panel import Panel
+from rich.table import Table
+from rich import box, style
 
 from gCullUTILS.rich_utils import CONSOLE
 from gCullMASK.utils_mask import setup_mask, get_bounding_boxes, get_masks, disp_mask, process_images
@@ -62,4 +65,11 @@ class MaskProcessor:
     save_dir = self.mask_loop(df, image_paths, predictor, processor, dino)
     mask_dir = Path(save_dir).resolve()
     linked_name = f"[link=file://{mask_dir}]{mask_dir}[/link]"
-    CONSOLE.log(f"🎉 Finished! 🎉 \n ✅ Inspect masks: {linked_name}")
+    table = Table(
+        title=None,
+        show_header=False,
+        box=box.MINIMAL,
+        title_style=style.Style(bold=True),
+    )
+    table.add_row(f"Inspect masks", linked_name)
+    CONSOLE.log(Panel(table, title=f"🎉 Finished! 🎉", expand=False))

@@ -63,7 +63,7 @@ def get_downscale_dir(root):
       raise RuntimeError(f"No masks found in {root}.  Please process masks first.")
   downscale_factor = compute_downscale_factor(sample)
   down_dir = root.parent / f"{root.name}_{downscale_factor}"
-  if downscale_factor > 1 and down_dir.is_dir():
+  if downscale_factor > 1 and down_dir.is_dir(): # assume folder exists, contents are correct
       CONSOLE.log(f"[bold yellow]Found existing downscaled images in [bold purple]{down_dir}[bold yellow]; using these for faster processing.")
       target_dir = down_dir
   else:

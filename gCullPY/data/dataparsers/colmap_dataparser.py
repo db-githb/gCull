@@ -523,7 +523,7 @@ class ColmapDataParser(DataParser):
 
         # Choose image_filenames and poses based on split, but after auto orient and scaling the poses.
         indices = self._get_image_indices(mask_filenames, split)
-        mask_filenames, downscale_factor = self._setup_downscale_factor(mask_filenames)
+        mask_filenames = self._setup_downscale_factor(mask_filenames)
         mask_filenames = [mask_filenames[i] for i in indices]
   
         idx_tensor = torch.tensor(indices, dtype=torch.long)
@@ -550,7 +550,7 @@ class ColmapDataParser(DataParser):
         )
 
         cameras.rescale_output_resolution(
-            scaling_factor=1.0 / downscale_factor, scale_rounding_mode=self.config.downscale_rounding_mode
+            scaling_factor=1.0 / self.config.downscale_factor, scale_rounding_mode=self.config.downscale_rounding_mode
         )
 
         if "applied_transform" in meta:
@@ -696,19 +696,19 @@ class ColmapDataParser(DataParser):
         filepath = next(iter(mask_filenames))
 
         if self._downscale_factor is None:
-            if self.config.downscale_factor is None:
-                self._downscale_factor = compute_downscale_factor(filepath)
-            else:
-                self._downscale_factor = int(self.config.downscale_factor)
-            if self._downscale_factor > 1 and not all(
-                get_fname(parent_path, fp).parent.exists() for fp in mask_filenames
-            ):
+            self._downscale_factor = (
+                int(self.config.downscale_factor)
+                if self.config.downscale_factor is not None
+                else compute_downscale_factor(filepath)
+            )
+        self.config.downscale_factor = self._downscale_factor
+        
+        if self._downscale_factor > 1:
+            downscaled = [get_fname(parent_path, fp) for fp in mask_filenames]
+
+            if any(not p.parent.exists() for p in downscaled):
                 CONSOLE.log(f"[bold yellow] Using downscale factor of [bold red] {self._downscale_factor}")
                 downscale_paths(mask_filenames, self._downscale_factor)
 
-        # Return transformed filenames
-        if self._downscale_factor > 1:
-            mask_filenames = [get_fname(parent_path, fp) for fp in mask_filenames]
-
-        assert isinstance(self._downscale_factor, int)
-        return mask_filenames, self._downscale_factor
+            mask_filenames = downscaled
+        return mask_filenames
