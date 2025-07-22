@@ -51,8 +51,6 @@ class BaseCull:
     """Base class for rendering."""
     load_model: str
     """Path to model file."""
-    downscale_factor: int
-    """ Factor by which to downsample the model before culling (e.g., 2 = half resolution). """
     output_dir: Path = Path("culled_models/output.ply")
     """Path to output model file."""
 

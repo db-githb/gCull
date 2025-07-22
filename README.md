@@ -24,6 +24,9 @@ cd <project-dir: gCull>
 # This will also install a CUDA-enabled version of PyTorch (based on pip defaults)
 pip install -r requirements.txt
 
+# Install ffmpeg binary in the same env
+conda install ffmpeg -c conda-forge
+
 # Install the gCull package and its CLI entrypoints:
 pip install .
 ```

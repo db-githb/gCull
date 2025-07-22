@@ -16,7 +16,6 @@ classifiers = [
 ]
 
 dependencies = [
-    "ffmpeg>=6.1.1",
     "jaxtyping>=0.3.2",
     "matplotlib>=3.10.3",
     "numpy>=2.2.6",
