@@ -37,4 +37,4 @@ dependencies = [
 gcull = "gCullCLI.cli_main:main"
 
 [tool.setuptools.packages.find]
-include = ["gCullCLI*", "gCullMASK*", "gCullPY*", "gCullUTILS*]
+include = ["gCullCLI*", "gCullMASK*", "gCullPY*", "gCullUTILS*"]
