@@ -2,6 +2,26 @@ import torch
 import numpy as np
 from PIL import Image
 from gCullCUDA import GaussianCullSettings, GaussianCuller
+from gCullPY.data.datamanagers.full_images_datamanager import FullImageDatamanager
+from gCullPY.data.datasets.base_dataset import Dataset
+from gCullPY.data.utils.dataloaders import FixedIndicesEvalDataloader
+from gCullUTILS.rich_utils import get_progress
+import sys, os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from contextlib import contextmanager
+
+@contextmanager
+def _disable_datamanager_setup(cls):
+    """
+    Disables setup_train or setup_eval for faster initialization.
+    """
+    old_setup_train = getattr(cls, "setup_train")
+    old_setup_eval = getattr(cls, "setup_eval")
+    setattr(cls, "setup_train", lambda *args, **kwargs: None)
+    setattr(cls, "setup_eval", lambda *args, **kwargs: None)
+    yield cls
+    setattr(cls, "setup_train", old_setup_train)
+    setattr(cls, "setup_eval", old_setup_eval)
 
 # taken from gaussian-opacity-fields
 def compute_3D_filter(model, camera, s):
@@ -203,3 +223,67 @@ def get_mask(camera_idx, mask_root):
             bool_mask = torch.tensor(np.array(Image.open(filepath))) == 0 # convert to bool tensor for ease of CUDA hand-off where black = True / non-black = False
             #show_mask(bool_mask)
             return bool_mask
+
+def modify_model(og_model, keep):
+    model = og_model
+    with torch.no_grad():
+        og_model.means.data = model.means[keep].clone()
+        og_model.opacities.data = model.opacities[keep].clone()
+        og_model.scales.data = model.scales[keep].clone()
+        og_model.quats.data = model.quats[keep].clone()
+        og_model.features_dc.data = model.features_dc[keep].clone()
+        og_model.features_rest.data = model.features_rest[keep].clone()
+    return og_model
+
+def get_mask_dir(config):
+    root = config.datamanager.data
+    downscale_factor = config.datamanager.dataparser.downscale_factor 
+    if downscale_factor > 1:
+        mask_dir = root / f"masks_{downscale_factor}"
+    else:
+        mask_dir = root / "masks"
+    return mask_dir
+
+def statcull(pipeline):
+    means3D     = pipeline.model.means.to("cpu") # cpu is faster for these operations
+    center      = means3D.median(dim=0)
+    std_dev     = means3D.std(dim=0)
+    z_scores    = torch.abs((means3D - center.values) / std_dev)
+    thr         = torch.tensor([.15, .15, 1.0])
+    cull_mask   = (z_scores > thr).any(dim=1)
+    return cull_mask
+
+def cull_loop(config, pipeline):
+
+    mask_dir = get_mask_dir(config)
+    cull_lst_master = torch.zeros(pipeline.model.means.shape[0], dtype=torch.bool)
+
+    for split in "train+test".split("+"):
+            datamanager: FullImageDatamanager
+            dataset: Dataset
+
+            test_mode = "test" if split == "train" else split
+            with _disable_datamanager_setup(config.datamanager._target):  # pylint: disable=protected-access
+                datamanager = config.datamanager.setup(
+                    test_mode=test_mode,
+                    device=pipeline.device
+                )
+            dataset = getattr(datamanager, f"{split}_dataset")
+
+            dataloader = FixedIndicesEvalDataloader(
+                input_dataset=dataset,
+                device=datamanager.device,
+                num_workers=datamanager.world_size * 4,
+            )
+
+            desc = f"\u2702\ufe0f\u00A0 Culling split {split} \u2702\ufe0f\u00A0"
+            with get_progress(desc) as progress:
+                for camera_idx, (camera, batch) in enumerate(progress.track(dataloader, total=len(dataset))):
+                    with torch.no_grad():
+                        camera.camera_to_worlds = camera.camera_to_worlds.squeeze() # splatoff rasterizer requires cam2world.shape = [3,4]
+                        bool_mask = get_mask(camera_idx, mask_dir)
+                        cull_lst = get_cull_list(pipeline.model, camera, bool_mask)
+                        cull_lst_master |= cull_lst.to("cpu")
+                        #print(f"{camera_idx}: {cull_lst_master.sum().item()}")
+
+    return cull_lst_master

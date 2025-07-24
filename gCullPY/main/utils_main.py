@@ -216,8 +216,14 @@ def setup_write_ply(inModel):
         count = np.sum(select)
     return count, map_to_tensors
 
-def write_ply(filename, count, map_to_tensors):
-        
+def write_ply(model_path, model):
+    
+    config_path = Path()
+    model_name = config_path.parent.name
+    experiment_name = config_path.parts[1]  # e.g., 'my-experiment'
+    filename = config_path.parent / f"{experiment_name}_{model_name}_culled.ply"
+    count, map_to_tensors = setup_write_ply(model)
+
     # Ensure count matches the length of all tensors
     if not all(len(tensor) == count for tensor in map_to_tensors.values()):
         raise ValueError("Count does not match the length of all tensors")
@@ -252,4 +258,6 @@ def write_ply(filename, count, map_to_tensors):
                     ply_file.write(np.float32(value).tobytes())
                 elif tensor.dtype == np.uint8:
                     ply_file.write(value.tobytes())
+    
+    return filename
 

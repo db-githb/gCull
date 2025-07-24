@@ -29,7 +29,7 @@ def downscale_paths(
     if factor <= 1:
         return  # nothing to do
     
-    if "images" in paths:
+    if any("images" in Path(p).parts for p in paths):
        target = "images"
     else:
        target = "masks"

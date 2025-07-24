@@ -15,14 +15,20 @@
 """Additional rich ui components"""
 
 from contextlib import nullcontext
-from typing import Optional
 
 from rich.console import Console
-from rich.progress import BarColumn, Progress, ProgressColumn, Task, TaskProgressColumn, TextColumn, TimeRemainingColumn
+from rich.progress import BarColumn, Progress, ProgressColumn, Task, TaskProgressColumn, TextColumn, TimeRemainingColumn, TimeElapsedColumn
 from rich.text import Text
+from rich.table import Table
+from rich import box, style
 
 CONSOLE = Console(width=120)
-
+TABLE = Table(
+            title=None,
+            show_header=False,
+            box=box.MINIMAL,
+            title_style=style.Style(bold=True),
+        )
 
 class ItersPerSecColumn(ProgressColumn):
     """Renders the iterations per second for a progress bar."""
@@ -51,11 +57,15 @@ def status(msg: str, spinner: str = "bouncingBall", verbose: bool = False):
         return nullcontext()
     return CONSOLE.status(msg, spinner=spinner)
 
-
-def get_progress(description: str, suffix: Optional[str] = None):
-    """Helper function to return a rich Progress object."""
-    progress_list = [TextColumn(description), BarColumn(), TaskProgressColumn(show_speed=True)]
-    progress_list += [ItersPerSecColumn(suffix=suffix)] if suffix else []
-    progress_list += [TimeRemainingColumn(elapsed_when_finished=True, compact=True)]
-    progress = Progress(*progress_list)
-    return progress
+def get_progress(description: str) -> Progress:
+    return Progress(
+        TextColumn(description),
+        BarColumn(),
+        TaskProgressColumn(
+            text_format="[progress.percentage]{task.completed}/{task.total:>.0f}({task.percentage:>3.1f}%)",
+            show_speed=True,
+        ),
+        ItersPerSecColumn(suffix="fps"),
+        TimeRemainingColumn(elapsed_when_finished=False, compact=False),
+        TimeElapsedColumn(),
+    )

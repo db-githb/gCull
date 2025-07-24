@@ -85,8 +85,7 @@ gCull/
 │   └── <experiment-name>/
 │       ├── colmap/
 │       ├── images/            ← put your source JPG/PNG files here
-│       ├── transforms.json
-|       └── <model-name>.ply   ← if using gsplat trainer, place the exported PLY file here for `cull-model`
+│       └──  transforms.json
 |
 ├── outputs/
 │   └── <experiment-name>/
@@ -107,7 +106,7 @@ gcull process-masks \
 
 # 2) Cull Gaussians using those masks
 gcull cull-model \
-  --load-model <path/to/config.yml or .ply>
+  --load-model <path/to/config.yml>
 ```
 
 ### Command details
@@ -129,10 +128,8 @@ Default: ```false```.
 ```cull-model```\
 Loads 3DGS YAML configuration and removes any Gaussians that intersect with pixel-rays cast from the black regions of the generated binary masks.
 
-- ```--load-model <path/to/config.yml or .ply>```\
-Path to either a Splatfacto configuration file (config.yml) or a gsplat trainer output file (.ply).
-
-**Compatibility Note**: The cull-model command works best with Splatfacto configuration files (config.yml). It may not perform as well when provided with .ply files exported from the gsplat simple_trainer.
+- ```--load-model <path/to/config.yml>```\
+Path to a Splatfacto configuration file (config.yml)
 
 ## 📁   File Structure (Output + Results)
 

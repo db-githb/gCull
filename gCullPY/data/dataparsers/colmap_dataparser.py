@@ -470,7 +470,7 @@ class ColmapDataParser(DataParser):
         meta = self._get_all_images_and_cameras(colmap_path)
         camera_type = CAMERA_MODEL_TO_TYPE[meta["camera_model"]]
 
-        mask_filenames = []
+        image_filenames = []
         poses = []
 
         fx = []
@@ -500,11 +500,7 @@ class ColmapDataParser(DataParser):
             )
 
             image_path = Path(frame["file_path"])
-            mask_dir = image_path.parents[1] / 'masks'
-            mask_name = image_path.name.replace('frame_', 'mask_')
-            mask_path = mask_dir / mask_name
-
-            mask_filenames.append(mask_path)
+            image_filenames.append(image_path)
             poses.append(frame["transform_matrix"])
             
         poses = torch.from_numpy(np.array(poses).astype(np.float32))
@@ -522,9 +518,9 @@ class ColmapDataParser(DataParser):
         poses[:, :3, 3] *= scale_factor
 
         # Choose image_filenames and poses based on split, but after auto orient and scaling the poses.
-        indices = self._get_image_indices(mask_filenames, split)
-        mask_filenames = self._setup_downscale_factor(mask_filenames)
-        mask_filenames = [mask_filenames[i] for i in indices]
+        indices = self._get_image_indices(image_filenames, split)
+        image_filenames = self._setup_downscale_factor(image_filenames)
+        image_filenames = [image_filenames[i] for i in indices]
   
         idx_tensor = torch.tensor(indices, dtype=torch.long)
         poses = poses[idx_tensor]
@@ -568,7 +564,7 @@ class ColmapDataParser(DataParser):
             metadata.update(self._load_3D_points(colmap_path, transform_matrix, scale_factor))
 
         dataparser_outputs = DataparserOutputs(
-            image_filenames=mask_filenames,
+            image_filenames=image_filenames,
             cameras=cameras,
             dataparser_scale=scale_factor,
             dataparser_transform=transform_matrix,
@@ -680,7 +676,7 @@ class ColmapDataParser(DataParser):
         CONSOLE.log("[bold green]:tada: Done downscaling images.")
 
     def _setup_downscale_factor(
-        self, mask_filenames: List[Path]
+        self, image_filenames: List[Path]
     ):
         """
         Setup the downscale factor for the dataset. This is used to downscale the images and cameras.
@@ -692,8 +688,8 @@ class ColmapDataParser(DataParser):
             base_part = parent.parent / (str(parent.name) + f"_{self._downscale_factor}")
             return base_part / rel_part
 
-        parent_path = Path(self.config.data / "masks").resolve(strict=False)
-        filepath = next(iter(mask_filenames))
+        parent_path = Path(self.config.data / "images").resolve(strict=False)
+        filepath = next(iter(image_filenames))
 
         if self._downscale_factor is None:
             self._downscale_factor = (
@@ -704,11 +700,11 @@ class ColmapDataParser(DataParser):
         self.config.downscale_factor = self._downscale_factor
         
         if self._downscale_factor > 1:
-            downscaled = [get_fname(parent_path, fp) for fp in mask_filenames]
+            downscaled = [get_fname(parent_path, fp) for fp in image_filenames]
 
             if any(not p.parent.exists() for p in downscaled):
                 CONSOLE.log(f"[bold yellow] Using downscale factor of [bold red] {self._downscale_factor}")
-                downscale_paths(mask_filenames, self._downscale_factor)
+                downscale_paths(image_filenames, self._downscale_factor)
 
-            mask_filenames = downscaled
-        return mask_filenames
+            image_filenames = downscaled
+        return image_filenames
