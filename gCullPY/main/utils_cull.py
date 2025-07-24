@@ -2,26 +2,8 @@ import torch
 import numpy as np
 from PIL import Image
 from gCullCUDA import GaussianCullSettings, GaussianCuller
-from gCullPY.data.datamanagers.full_images_datamanager import FullImageDatamanager
-from gCullPY.data.datasets.base_dataset import Dataset
-from gCullPY.data.utils.dataloaders import FixedIndicesEvalDataloader
+from gCullPY.main.utils_main import build_loader
 from gCullUTILS.rich_utils import get_progress
-import sys, os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from contextlib import contextmanager
-
-@contextmanager
-def _disable_datamanager_setup(cls):
-    """
-    Disables setup_train or setup_eval for faster initialization.
-    """
-    old_setup_train = getattr(cls, "setup_train")
-    old_setup_eval = getattr(cls, "setup_eval")
-    setattr(cls, "setup_train", lambda *args, **kwargs: None)
-    setattr(cls, "setup_eval", lambda *args, **kwargs: None)
-    yield cls
-    setattr(cls, "setup_train", old_setup_train)
-    setattr(cls, "setup_eval", old_setup_eval)
 
 # taken from gaussian-opacity-fields
 def compute_3D_filter(model, camera, s):
@@ -259,31 +241,18 @@ def cull_loop(config, pipeline):
     cull_lst_master = torch.zeros(pipeline.model.means.shape[0], dtype=torch.bool)
 
     for split in "train+test".split("+"):
-            datamanager: FullImageDatamanager
-            dataset: Dataset
 
-            test_mode = "test" if split == "train" else split
-            with _disable_datamanager_setup(config.datamanager._target):  # pylint: disable=protected-access
-                datamanager = config.datamanager.setup(
-                    test_mode=test_mode,
-                    device=pipeline.device
-                )
-            dataset = getattr(datamanager, f"{split}_dataset")
+        dataset, dataloader, dataset = build_loader(config, split, pipeline.device)
 
-            dataloader = FixedIndicesEvalDataloader(
-                input_dataset=dataset,
-                device=datamanager.device,
-                num_workers=datamanager.world_size * 4,
-            )
-
-            desc = f"\u2702\ufe0f\u00A0 Culling split {split} \u2702\ufe0f\u00A0"
-            with get_progress(desc) as progress:
-                for camera_idx, (camera, batch) in enumerate(progress.track(dataloader, total=len(dataset))):
-                    with torch.no_grad():
-                        camera.camera_to_worlds = camera.camera_to_worlds.squeeze() # splatoff rasterizer requires cam2world.shape = [3,4]
-                        bool_mask = get_mask(camera_idx, mask_dir)
-                        cull_lst = get_cull_list(pipeline.model, camera, bool_mask)
-                        cull_lst_master |= cull_lst.to("cpu")
-                        #print(f"{camera_idx}: {cull_lst_master.sum().item()}")
+        desc = f"\u2702\ufe0f\u00A0 Culling split {split} \u2702\ufe0f\u00A0"
+        with get_progress(desc) as progress:
+            for camera_idx, (camera, batch) in enumerate(progress.track(dataloader, total=len(dataset))):
+                with torch.no_grad():
+                    camera.camera_to_worlds = camera.camera_to_worlds.squeeze() # splatoff rasterizer requires cam2world.shape = [3,4]
+                    bool_mask = get_mask(camera_idx, mask_dir)
+                    cull_lst = get_cull_list(pipeline.model, camera, bool_mask)
+                    cull_lst_master |= cull_lst.to("cpu")
+                    #print(f"{camera_idx}: {cull_lst_master.sum().item()}")
 
     return cull_lst_master
+

@@ -2,18 +2,37 @@ import torch
 import numpy as np
 import re, yaml
 import os
+from PIL import Image
 from typing_extensions import Literal, Tuple
 from collections import OrderedDict
 from pathlib import Path
 from plyfile import PlyData
 
-from gCullUTILS.rich_utils import CONSOLE
+from gCullUTILS.rich_utils import CONSOLE, get_progress
 from gCullPY.pipelines.base_pipeline import Pipeline
 from gCullPY.pipelines.base_pipeline import VanillaPipelineConfig
 from gCullPY.data.datamanagers.full_images_datamanager import FullImageDatamanagerConfig
 from gCullPY.models.splatfacto import SplatfactoModelConfig
 from gCullPY.data.dataparsers.colmap_dataparser import ColmapDataParserConfig
 from gCullPY.data.datasets.base_dataset import InputDataset
+from gCullPY.data.utils.dataloaders import FixedIndicesEvalDataloader
+
+import sys, os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from contextlib import contextmanager
+
+@contextmanager
+def _disable_datamanager_setup(cls):
+    """
+    Disables setup_train or setup_eval for faster initialization.
+    """
+    old_setup_train = getattr(cls, "setup_train")
+    old_setup_eval = getattr(cls, "setup_eval")
+    setattr(cls, "setup_train", lambda *args, **kwargs: None)
+    setattr(cls, "setup_eval", lambda *args, **kwargs: None)
+    yield cls
+    setattr(cls, "setup_train", old_setup_train)
+    setattr(cls, "setup_eval", old_setup_eval)
 
 def to_path(val):
         if isinstance(val, list):
@@ -218,10 +237,9 @@ def setup_write_ply(inModel):
 
 def write_ply(model_path, model):
     
-    config_path = Path()
-    model_name = config_path.parent.name
-    experiment_name = config_path.parts[1]  # e.g., 'my-experiment'
-    filename = config_path.parent / f"{experiment_name}_{model_name}_culled.ply"
+    model_name = model_path.parent.name
+    experiment_name = model_path.parts[1]  # e.g., 'my-experiment'
+    filename = model_path.parent / f"{experiment_name}_{model_name}_culled.ply"
     count, map_to_tensors = setup_write_ply(model)
 
     # Ensure count matches the length of all tensors
@@ -261,3 +279,43 @@ def write_ply(model_path, model):
     
     return filename
 
+def build_loader(config, split, device):
+    test_mode = "test" if split == "train" else split
+
+    with _disable_datamanager_setup(config.datamanager._target):  # pylint: disable=protected-access
+        datamanager = config.datamanager.setup(
+            test_mode=test_mode,
+            device=device
+        )
+    dataset = getattr(datamanager, f"{split}_dataset", datamanager.eval_dataset)
+    
+    dataloader = FixedIndicesEvalDataloader(
+        input_dataset=dataset,
+        device=datamanager.device,
+        num_workers=datamanager.world_size * 4,
+    )
+    return dataset, dataloader
+
+def render_loop(model_path, config, pipeline):
+        render_dir = model_path.parent.parts[1]
+        output_dir = Path("renders") / render_dir
+        output_dir.mkdir(parents=True, exist_ok=True)
+        pipeline.model.downscale_facto = config.datamanager.dataparser.downscale_factor 
+        for split in "train+test".split("+"):
+            dataset, dataloader = build_loader(config, split, pipeline.device,)
+            desc = f":movie_camera: Rendering split {split} :movie_camera:"
+            with get_progress(desc) as progress:
+                for idx, (camera, _) in enumerate(progress.track(dataloader, total=len(dataset))):
+                    with torch.no_grad():
+                        rgb_tensor = pipeline.model.get_outputs(camera)["rgb"]
+
+                    # convert [C,H,W] float tensor in [0,1] to a H×W×3 uint8 image
+                    img_np = (
+                        rgb_tensor
+                        .clamp(0.0, 1.0)
+                        .mul(255)
+                        .byte()
+                        .cpu()
+                        .numpy()
+                    )
+                    Image.fromarray(img_np).save(output_dir / f"{idx:05d}.png")

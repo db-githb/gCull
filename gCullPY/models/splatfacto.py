@@ -16,18 +16,18 @@
 """
 NeRF implementation that combines many recent advancements.
 """
-
 from __future__ import annotations
-
+import torch
 import math
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple, Type, Any
+from typing import Dict, List, Optional, Tuple, Type, Any, Union
 
 import numpy as np
 import torch
 from torch.nn import Parameter
 
-# need following import for background color override
+from gsplat.rendering import rasterization
+from gCullPY.cameras.cameras import Cameras
 from gCullPY.models.base_model import Model, ModelConfig
 from gCullUTILS.rich_utils import CONSOLE
 
@@ -281,6 +281,108 @@ class SplatfactoModel(Model):
         gps = self.get_gaussian_param_groups()
         self.camera_optimizer.get_param_groups(param_groups=gps)
         return gps
+
+    def get_viewmat(self, optimized_camera_to_world):
+        """
+        function that converts c2w to gsplat world2camera matrix, using compile for some speed
+        """
+        R = optimized_camera_to_world[:, :3, :3]  # 3 x 3
+        T = optimized_camera_to_world[:, :3, 3:4]  # 3 x 1
+        # flip the z and y axes to align with gsplat conventions
+        R = R * torch.tensor([[[1, -1, -1]]], device=R.device, dtype=R.dtype)
+        # analytic matrix inverse to get world2camera matrix
+        R_inv = R.transpose(1, 2)
+        T_inv = -torch.bmm(R_inv, T)
+        viewmat = torch.zeros(R.shape[0], 4, 4, device=R.device, dtype=R.dtype)
+        viewmat[:, 3, 3] = 1.0  # homogenous
+        viewmat[:, :3, :3] = R_inv
+        viewmat[:, :3, 3:4] = T_inv
+        return viewmat
+
+    def get_outputs(self, camera: Cameras) -> Dict[str, Union[torch.Tensor, List]]:
+        """Takes in a camera and returns a dictionary of outputs.
+
+        Args:
+            camera: The camera(s) for which output images are rendered. It should have
+            all the needed information to compute the outputs.
+
+        Returns:
+            Outputs of model. (ie. rendered colors)
+        """
+        if not isinstance(camera, Cameras):
+            print("Called get_outputs with not a camera")
+            return {}
+
+        optimized_camera_to_world = camera.camera_to_worlds #not training for now
+
+        opacities_crop = self.opacities
+        means_crop = self.means
+        features_dc_crop = self.features_dc
+        features_rest_crop = self.features_rest
+        scales_crop = self.scales
+        quats_crop = self.quats
+
+        colors_crop = torch.cat((features_dc_crop[:, None, :], features_rest_crop), dim=1)
+
+        #camera_scale_fac = self.downscale_factor
+        #camera.rescale_output_resolution(1 / camera_scale_fac)
+        viewmat = self.get_viewmat(optimized_camera_to_world)
+        K = camera.get_intrinsics_matrices().cuda()
+        W, H = int(camera.width.item()), int(camera.height.item())
+        self.last_size = (H, W)
+        #camera.rescale_output_resolution(camera_scale_fac)  # type: ignore
+
+        render_mode = "RGB" # or RGB+ED
+
+        if self.config.sh_degree > 0:
+            sh_degree_to_use = self.config.sh_degree
+        else:
+            colors_crop = torch.sigmoid(colors_crop).squeeze(1)  # [N, 1, 3] -> [N, 3]
+            sh_degree_to_use = None
+
+        render, alpha, self.info = rasterization(  # type: ignore[reportPossiblyUnboundVariable]
+            means=means_crop,
+            quats=quats_crop,  # rasterization does normalization internally
+            scales=torch.exp(scales_crop),
+            opacities=torch.sigmoid(opacities_crop).squeeze(-1),
+            colors=colors_crop,
+            viewmats=viewmat,  # [1, 4, 4]
+            Ks=K,  # [1, 3, 3]
+            width=W,
+            height=H,
+            packed=False,
+            near_plane=0.01,
+            far_plane=1e10,
+            render_mode=render_mode,
+            sh_degree=sh_degree_to_use,
+            sparse_grad=False,
+            absgrad= False,
+            rasterize_mode="classic" # or "antialiased"
+            # set some threshold to disregrad small gaussians for faster rendering.
+            # radius_clip=3.0,
+        )
+
+        alpha = alpha[:, ...]
+
+        background = torch.ones(3, device=self.device) #hardcode background color as white
+        rgb = render[:, ..., :3] + (1 - alpha) * background
+        rgb = torch.clamp(rgb, 0.0, 1.0)
+
+        if render_mode == "RGB+ED":
+            depth_im = render[:, ..., 3:4]
+            depth_im = torch.where(alpha > 0, depth_im, depth_im.detach().max()).squeeze(0)
+        else:
+            depth_im = None
+
+        if background.shape[0] == 3 and not self.training:
+            background = background.expand(H, W, 3)
+
+        return {
+            "rgb": rgb.squeeze(0),  # type: ignore
+            "depth": depth_im,  # type: ignore
+            "accumulation": alpha.squeeze(0),  # type: ignore
+            "background": background,  # type: ignore
+        }  
 
 
 

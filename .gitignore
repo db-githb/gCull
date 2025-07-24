@@ -13,6 +13,7 @@ build/
 models/
 outputs
 /data/
+renders
 
 pixi.lock
 pixi.toml

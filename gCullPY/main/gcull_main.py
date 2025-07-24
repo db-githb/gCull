@@ -26,7 +26,7 @@ from typing import Optional
 
 from gCullPY.pipelines.base_pipeline import VanillaPipelineConfig
 
-from gCullPY.main.utils_main import write_ply, load_config
+from gCullPY.main.utils_main import write_ply, load_config, render_loop
 from gCullPY.main.utils_cull import statcull, modify_model, cull_loop
 
 from gCullUTILS.rich_utils import CONSOLE, TABLE
@@ -35,7 +35,7 @@ from rich.panel import Panel
 @dataclass
 class BaseCull:
     """Base class for rendering."""
-    load_model: str
+    model_path: Path
     """Path to model file."""
     output_dir: Path = Path("culled_models/output.ply")
     """Path to output model file."""
@@ -53,16 +53,20 @@ class DatasetCull(BaseCull):
 
         # load model
         config, pipeline = load_config(
-            self.load_model,
+            self.model_path,
             test_mode="inference",
         )
         assert isinstance(config, (VanillaPipelineConfig))
-        
+
         # Phase 1 - run statCull
         cull_mask = statcull(pipeline)
         keep = ~cull_mask
         pipeline.model = modify_model(pipeline.model, keep)
         CONSOLE.log(f"Phase 1 culled: {cull_mask.sum().item()}/{pipeline.model.means.shape[0]}")
+
+        # render images from modified model
+        render_loop(self.model_path, config, pipeline)
+        CONSOLE.log("[bold][green]:tada: Render Complete :tada:[/bold]")
 
         # Phase 2 - run gCull
         cull_lst_master = cull_loop(config, pipeline)
@@ -71,7 +75,7 @@ class DatasetCull(BaseCull):
         CONSOLE.log(f"Total culled: {cull_lst_master.sum().item()}/{pipeline.model.means.shape[0]}, writing to ply...")
 
         # write modified model to file
-        filename = write_ply(self.load_model, pipeline.model)
+        filename = write_ply(self.model_path, pipeline.model)
         path = Path(filename)
         dir = config.datamanager.data.parents[1] / path.parent
         linked_name = f"[link=file://{dir}/]{path.name}[/link]"
