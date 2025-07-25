@@ -38,9 +38,15 @@ def get_bounding_boxes(image_pil, prompt, processor, dino):
 def get_masks(image_pil, boxes, predictor):
   arr = np.array(image_pil)
   predictor.set_image(arr)
+
+  if boxes.size == 0: # catch no predictions for prompt
+    h, w = arr.shape[:2]
+    best_mask = np.ones((h, w), dtype=bool)
+
   for box in boxes:
       masks, scores, _ = predictor.predict(box=box, multimask_output=True)
       best_mask = masks[np.argmax(scores)]
+     
   return best_mask
 
 def disp_mask(image_rgb, binary_mask):

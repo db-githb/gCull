@@ -28,7 +28,7 @@ from gCullPY.pipelines.base_pipeline import VanillaPipelineConfig
 
 from gCullPY.main.utils_main import write_ply, load_config, render_loop
 from gCullPY.main.utils_cull import statcull, modify_model, cull_loop
-
+from gCullMASK.mask_main import MaskProcessor
 from gCullUTILS.rich_utils import CONSOLE, TABLE
 from rich.panel import Panel
 
@@ -56,7 +56,6 @@ class DatasetCull(BaseCull):
             self.model_path,
             test_mode="inference",
         )
-        assert isinstance(config, (VanillaPipelineConfig))
 
         # Phase 1 - run statCull
         cull_mask = statcull(pipeline)
@@ -65,8 +64,13 @@ class DatasetCull(BaseCull):
         CONSOLE.log(f"Phase 1 culled: {cull_mask.sum().item()}/{pipeline.model.means.shape[0]}")
 
         # render images from modified model
-        render_loop(self.model_path, config, pipeline)
+        CONSOLE.print("[bold][yellow]Rendering frames for mask extraction...[/bold]")
+        render_dir = render_loop(self.model_path, config, pipeline)
         CONSOLE.log("[bold][green]:tada: Render Complete :tada:[/bold]")
+
+        # get masks from rendered images
+        mp = MaskProcessor(render_dir, "sky")
+        mp.run_mask_processing()
 
         # Phase 2 - run gCull
         cull_lst_master = cull_loop(config, pipeline)

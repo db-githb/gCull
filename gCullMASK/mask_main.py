@@ -23,10 +23,11 @@ class MaskProcessor:
     self.inspect = inspect
 
   def mask_loop(self, downscale_factor, image_paths, predictor, processor, dino):
+    root = self.data_dir.resolve().parents[1] / "data" / self.data_dir.name
     if downscale_factor > 1:
-       save_dir = self.data_dir.parent / f"masks_{downscale_factor}"
+       save_dir = root / f"masks_{downscale_factor}"
     else:
-      save_dir = self.data_dir.parent / "masks"
+      save_dir = root / "masks"
     save_dir.mkdir(parents=True, exist_ok=True)
 
     for idx, img_path in tqdm(enumerate(image_paths), total=len(image_paths), desc="Producing Masks", colour='GREEN', disable=False):
@@ -65,11 +66,5 @@ class MaskProcessor:
     save_dir = self.mask_loop(df, image_paths, predictor, processor, dino)
     mask_dir = Path(save_dir).resolve()
     linked_name = f"[link=file://{mask_dir}]{mask_dir}[/link]"
-    table = Table(
-        title=None,
-        show_header=False,
-        box=box.MINIMAL,
-        title_style=style.Style(bold=True),
-    )
-    table.add_row(f"Inspect masks", linked_name)
-    CONSOLE.log(Panel(table, title=f"🎉 Finished! 🎉", expand=False))
+    CONSOLE.log(f"🎉 Finished! 🎉")
+    CONSOLE.print(f"Inspect masks:", linked_name)

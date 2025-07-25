@@ -201,10 +201,10 @@ def get_cull_list(model, camera, bool_mask):
     return cull_lst
 
 def get_mask(camera_idx, mask_root):
-            filepath = mask_root / f"mask_{camera_idx+1:05d}.png"
-            bool_mask = torch.tensor(np.array(Image.open(filepath))) == 0 # convert to bool tensor for ease of CUDA hand-off where black = True / non-black = False
-            #show_mask(bool_mask)
-            return bool_mask
+    filepath = mask_root / f"mask_{camera_idx:05d}.png" # used to add one to idx
+    bool_mask = torch.tensor(np.array(Image.open(filepath))) == 0 # convert to bool tensor for ease of CUDA hand-off where black = True / non-black = False
+    #show_mask(bool_mask)
+    return bool_mask
 
 def modify_model(og_model, keep):
     model = og_model
@@ -231,25 +231,25 @@ def statcull(pipeline):
     center      = means3D.median(dim=0)
     std_dev     = means3D.std(dim=0)
     z_scores    = torch.abs((means3D - center.values) / std_dev)
-    thr         = torch.tensor([.15, .15, 1.0])
+    thr         = torch.tensor([.2, .2, 1.0])
     cull_mask   = (z_scores > thr).any(dim=1)
     return cull_mask
 
 def cull_loop(config, pipeline):
 
-    mask_dir = get_mask_dir(config)
+    mask_dir = config.datamanager.data / "masks" #get_mask_dir(config)
     cull_lst_master = torch.zeros(pipeline.model.means.shape[0], dtype=torch.bool)
 
     for split in "train+test".split("+"):
 
-        dataset, dataloader, dataset = build_loader(config, split, pipeline.device)
+        dataset, dataloader = build_loader(config, split, pipeline.device)
 
         desc = f"\u2702\ufe0f\u00A0 Culling split {split} \u2702\ufe0f\u00A0"
         with get_progress(desc) as progress:
             for camera_idx, (camera, batch) in enumerate(progress.track(dataloader, total=len(dataset))):
                 with torch.no_grad():
                     camera.camera_to_worlds = camera.camera_to_worlds.squeeze() # splatoff rasterizer requires cam2world.shape = [3,4]
-                    bool_mask = get_mask(camera_idx, mask_dir)
+                    bool_mask = get_mask(camera_idx+1, mask_dir)
                     cull_lst = get_cull_list(pipeline.model, camera, bool_mask)
                     cull_lst_master |= cull_lst.to("cpu")
                     #print(f"{camera_idx}: {cull_lst_master.sum().item()}")

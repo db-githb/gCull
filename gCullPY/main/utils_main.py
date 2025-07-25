@@ -287,6 +287,7 @@ def build_loader(config, split, device):
             test_mode=test_mode,
             device=device
         )
+        
     dataset = getattr(datamanager, f"{split}_dataset", datamanager.eval_dataset)
     
     dataloader = FixedIndicesEvalDataloader(
@@ -297,15 +298,17 @@ def build_loader(config, split, device):
     return dataset, dataloader
 
 def render_loop(model_path, config, pipeline):
+        df = config.datamanager.dataparser.downscale_factor 
+        pipeline.model.downscale_factor = df
         render_dir = model_path.parent.parts[1]
-        output_dir = Path("renders") / render_dir
+        output_dir = Path("renders") / f"{render_dir}"
         output_dir.mkdir(parents=True, exist_ok=True)
-        pipeline.model.downscale_facto = config.datamanager.dataparser.downscale_factor 
+        idx = 1
         for split in "train+test".split("+"):
             dataset, dataloader = build_loader(config, split, pipeline.device,)
             desc = f":movie_camera: Rendering split {split} :movie_camera:"
             with get_progress(desc) as progress:
-                for idx, (camera, _) in enumerate(progress.track(dataloader, total=len(dataset))):
+                for camera, _ in progress.track(dataloader, total=len(dataset)):
                     with torch.no_grad():
                         rgb_tensor = pipeline.model.get_outputs(camera)["rgb"]
 
@@ -318,4 +321,6 @@ def render_loop(model_path, config, pipeline):
                         .cpu()
                         .numpy()
                     )
-                    Image.fromarray(img_np).save(output_dir / f"{idx:05d}.png")
+                    Image.fromarray(img_np).save(output_dir / f"frame_{idx:05d}.png")
+                    idx+=1
+        return output_dir
