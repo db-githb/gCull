@@ -109,5 +109,6 @@ CullGaussiansCUDA(
 		radii.contiguous().data<int>(),
 		debug);
   }
+
   return output;
 }

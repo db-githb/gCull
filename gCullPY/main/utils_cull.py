@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 from PIL import Image
+from pathlib import Path
 from gCullCUDA import GaussianCullSettings, GaussianCuller
 from gCullPY.main.utils_main import build_loader
 from gCullUTILS.rich_utils import get_progress
@@ -200,9 +201,11 @@ def get_cull_list(model, camera, bool_mask):
     
     return cull_lst
 
-def get_mask(camera_idx, mask_root):
-    filepath = mask_root / f"mask_{camera_idx:05d}.png" # used to add one to idx
-    bool_mask = torch.tensor(np.array(Image.open(filepath))) == 0 # convert to bool tensor for ease of CUDA hand-off where black = True / non-black = False
+def get_mask(batch, mask_dir):
+    img_idx = int(batch["image_idx"])+1 #add one for alignement
+    mask_name = f"mask_{img_idx:05d}.png"
+    mask_path = Path(mask_dir) / mask_name
+    bool_mask = torch.tensor(np.array(Image.open(mask_path))) == 0 # convert to bool tensor for ease of CUDA hand-off where black = True / non-black = False
     #show_mask(bool_mask)
     return bool_mask
 
@@ -243,13 +246,16 @@ def cull_loop(config, pipeline):
     for split in "train+test".split("+"):
 
         dataset, dataloader = build_loader(config, split, pipeline.device)
-
         desc = f"\u2702\ufe0f\u00A0 Culling split {split} \u2702\ufe0f\u00A0"
+
         with get_progress(desc) as progress:
             for camera_idx, (camera, batch) in enumerate(progress.track(dataloader, total=len(dataset))):
                 with torch.no_grad():
+                    #frame_idx = batch["image_idx"]
                     camera.camera_to_worlds = camera.camera_to_worlds.squeeze() # splatoff rasterizer requires cam2world.shape = [3,4]
-                    bool_mask = get_mask(camera_idx+1, mask_dir)
+                    bool_mask = get_mask(batch, mask_dir)
+                    #bool_mask = get_mask(batch, config.datamanager.data / "masks_4")
+                    #bool_mask.data = bool_mask_1.data
                     cull_lst = get_cull_list(pipeline.model, camera, bool_mask)
                     cull_lst_master |= cull_lst.to("cpu")
                     #print(f"{camera_idx}: {cull_lst_master.sum().item()}")

@@ -16,7 +16,6 @@ from gCullPY.models.splatfacto import SplatfactoModelConfig
 from gCullPY.data.dataparsers.colmap_dataparser import ColmapDataParserConfig
 from gCullPY.data.datasets.base_dataset import InputDataset
 from gCullPY.data.utils.dataloaders import FixedIndicesEvalDataloader
-
 import sys, os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from contextlib import contextmanager
@@ -280,7 +279,7 @@ def write_ply(model_path, model):
     return filename
 
 def build_loader(config, split, device):
-    test_mode = "test" if split == "train" else split
+    test_mode = "train" if split == "train" else "test"
 
     with _disable_datamanager_setup(config.datamanager._target):  # pylint: disable=protected-access
         datamanager = config.datamanager.setup(
@@ -295,18 +294,21 @@ def build_loader(config, split, device):
         device=datamanager.device,
         num_workers=datamanager.world_size * 4,
     )
+    
     return dataset, dataloader
 
 def render_loop(model_path, config, pipeline):
-        df = config.datamanager.dataparser.downscale_factor 
-        pipeline.model.downscale_factor = df
+        #df = config.datamanager.dataparser.downscale_factor 
+        #pipeline.model.downscale_factor = df
         render_dir = model_path.parent.parts[1]
         output_dir = Path("renders") / f"{render_dir}"
         output_dir.mkdir(parents=True, exist_ok=True)
         idx = 1
+        
         for split in "train+test".split("+"):
             dataset, dataloader = build_loader(config, split, pipeline.device,)
             desc = f":movie_camera: Rendering split {split} :movie_camera:"
+            
             with get_progress(desc) as progress:
                 for camera, _ in progress.track(dataloader, total=len(dataset)):
                     with torch.no_grad():

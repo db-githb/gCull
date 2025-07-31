@@ -362,12 +362,13 @@ void CudaCuller::Culler::forward(
 	// const float* cov3Ds = cov3D_precomp != nullptr ? cov3D_precomp : geomState.cov3D;
 	const float *view2gaussian = view2gaussian_precomp != nullptr ? view2gaussian_precomp : geomState.view2gaussian;
 	// const float* view2gaussian = view2gaussian_precomp;
-	
+
 	bool* d_boolMask;
 	cudaMalloc(&d_boolMask, width * height * sizeof(bool));
 	cudaMemcpy(d_boolMask, bool_mask, width * height * sizeof(bool), cudaMemcpyHostToDevice);
 	CHECK_CUDA(FORWARD::gCull(
 		tile_grid, block,
+		P,
 		width, height,
 		d_boolMask,
 		focal_x, focal_y,
@@ -378,7 +379,7 @@ void CudaCuller::Culler::forward(
 		geomState.conic_opacity,
 		output
 	), debug);
-	cudaDeviceSynchronize();
+
 	cudaFree(d_boolMask);
 	return;
 }

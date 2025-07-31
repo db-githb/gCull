@@ -42,6 +42,7 @@ namespace FORWARD
 
 	void gCull(
 		const dim3 tile_bounds, dim3 block,
+		int P,
 		const int width, int height,
 		const bool* bool_mask,
 		const float focal_x, float focal_y,

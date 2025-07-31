@@ -458,20 +458,22 @@ void FORWARD::preprocess(int P, int D, int M,
 			   true)
 }
 
-__global__ __launch_bounds__(BLOCK_X *BLOCK_Y)
-	void gCullCUDA(
-		const int width,
-		const int height,
-		const bool* bool_mask,
-		const float focal_x, float focal_y,
-		const uint2 *__restrict__ ranges,
-		const uint32_t *__restrict__ point_list,
-		const float *__restrict__ view2gaussian,
-		const float3 *__restrict__ scales,
-		const float4 *__restrict__ conic_opacity,
-		bool* output)
+__global__ __launch_bounds__(BLOCK_SIZE)
+void gCullCUDA(
+	int           P,
+    int           width,
+    int           height,
+    const bool   *bool_mask,        // [width*height], true=keep, false=skip
+    float         focal_x,
+    float         focal_y,
+    const uint2  *ranges,           // [num_tiles]
+    const uint32_t *point_list,     // [sum over ranges]
+    const float  *view2gaussian,    // [P × 16]
+    const float3 *scales,           // [P]
+    const float4 *conic_opacity,    // [P]
+    bool         *output)           // [P], initially all false
 {
-	auto block = cg::this_thread_block();
+    auto block = cg::this_thread_block();
 	uint32_t horizontal_blocks = (width + BLOCK_X - 1) / BLOCK_X;
 	// compute pixel coords
 	uint2 pix_min = {block.group_index().x * BLOCK_X, block.group_index().y * BLOCK_Y};
@@ -522,6 +524,7 @@ __global__ __launch_bounds__(BLOCK_X *BLOCK_Y)
 			for (int j = 0; j < min(BLOCK_SIZE, toDo); j++)
 			{
 				int gIdx = collected_id[j];
+				if (gIdx < 0 || gIdx >= P) continue;
 				// check if gaussian has already been processed
 				if (output[gIdx])
 				{
@@ -534,7 +537,7 @@ __global__ __launch_bounds__(BLOCK_X *BLOCK_Y)
 				float *view2gaussian_j = collected_view2gaussian + j * 16;
 
 				float3 scale_j = collected_scale[j];
-				float3 ray_point = {ray.x, ray.y, .9}; // consider using .9 for image plane to camera (ray.z)
+				float3 ray_point = {ray.x, ray.y, 0.9}; // consider using .9 for image plane to camera (ray.z)
 
 				// EQ.2 from GOF paper - camera pos is at zero in view space/coordinate system
 				float3 cam_pos_local = {view2gaussian_j[12], view2gaussian_j[13], view2gaussian_j[14]};									// translate camera center to gaussian's local coordinate system
@@ -581,6 +584,7 @@ __global__ __launch_bounds__(BLOCK_X *BLOCK_Y)
 
 void FORWARD::gCull(
 	const dim3 tile_bounds, dim3 block,
+	int P,
 	const int width, int height,
 	const bool* bool_mask,
 	const float focal_x, float focal_y,
@@ -591,6 +595,7 @@ void FORWARD::gCull(
 	const float4 *__restrict__ conic_opacity,
 	bool* output){
 	gCullCUDA<<<tile_bounds, block>>>(
+		P,
 		width, height,
 		bool_mask,
 		focal_x, focal_y,

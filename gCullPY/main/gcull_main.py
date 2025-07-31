@@ -58,10 +58,13 @@ class DatasetCull(BaseCull):
         )
 
         # Phase 1 - run statCull
+        starting_total = pipeline.model.means.shape[0]
         cull_mask = statcull(pipeline)
         keep = ~cull_mask
         pipeline.model = modify_model(pipeline.model, keep)
-        CONSOLE.log(f"Phase 1 culled: {cull_mask.sum().item()}/{pipeline.model.means.shape[0]}")
+        statcull_total = pipeline.model.means.shape[0]
+        CONSOLE.log(f"Phase 1 culled: {cull_mask.sum().item()}/{starting_total} ➜ New Total = {statcull_total}")
+       
 
         # render images from modified model
         CONSOLE.print("[bold][yellow]Rendering frames for mask extraction...[/bold]")
@@ -73,10 +76,10 @@ class DatasetCull(BaseCull):
         mp.run_mask_processing()
 
         # Phase 2 - run gCull
-        cull_lst_master = cull_loop(config, pipeline)
-        keep = ~cull_lst_master
+        cull_lst = cull_loop(config, pipeline)
+        keep = ~cull_lst
         pipeline.model = modify_model(pipeline.model, keep)
-        CONSOLE.log(f"Total culled: {cull_lst_master.sum().item()}/{pipeline.model.means.shape[0]}, writing to ply...")
+        CONSOLE.log(f"Total culled: {cull_lst.sum().item()}/{statcull_total} ➜ New Total = {pipeline.model.means.shape[0]}, writing to ply...")
 
         # write modified model to file
         filename = write_ply(self.model_path, pipeline.model)
