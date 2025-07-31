@@ -67,17 +67,17 @@ class DatasetCull(BaseCull):
        
 
         # render images from modified model
-        CONSOLE.print("[bold][yellow]Rendering frames for mask extraction...[/bold]")
-        render_dir = render_loop(self.model_path, config, pipeline)
-        CONSOLE.log("[bold][green]:tada: Render Complete :tada:[/bold]")
+        #CONSOLE.print("[bold][yellow]Rendering frames for mask extraction...[/bold]")
+        #render_dir = render_loop(self.model_path, config, pipeline)
+        #CONSOLE.log("[bold][green]:tada: Render Complete :tada:[/bold]")
 
         # get masks from rendered images
-        mp = MaskProcessor(render_dir, "sky")
-        mp.run_mask_processing()
+        #mp = MaskProcessor(render_dir, "car")
+        #mp.run_mask_processing()
 
         # Phase 2 - run gCull
         cull_lst = cull_loop(config, pipeline)
-        keep = ~cull_lst
+        keep = cull_lst == 0
         pipeline.model = modify_model(pipeline.model, keep)
         CONSOLE.log(f"Total culled: {cull_lst.sum().item()}/{statcull_total} ➜ New Total = {pipeline.model.means.shape[0]}, writing to ply...")
 

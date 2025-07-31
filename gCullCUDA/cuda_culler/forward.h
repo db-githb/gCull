@@ -44,14 +44,14 @@ namespace FORWARD
 		const dim3 tile_bounds, dim3 block,
 		int P,
 		const int width, int height,
-		const bool* bool_mask,
+		const int* binary_mask,
 		const float focal_x, float focal_y,
 		const uint2 *__restrict__ ranges,
 		const uint32_t *__restrict__ point_list,
 		const float *__restrict__ view2gaussian,
 		const float3 *__restrict__ scales,
 		const float4 *__restrict__ conic_opacity,
-		bool* output
+		int* output
 	);
 	
 	glm::mat3 quat2rot(const glm::vec4 q);

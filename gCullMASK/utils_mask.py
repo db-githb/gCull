@@ -29,7 +29,7 @@ def get_bounding_boxes(image_pil, prompt, processor, dino):
   results = processor.post_process_grounded_object_detection(
     outputs,
     inputs.input_ids,
-    box_threshold=0.3,
+    box_threshold=0.9,
     text_threshold=0.25,
     target_sizes=[image_pil.size[::-1]]
   )

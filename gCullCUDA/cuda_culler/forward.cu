@@ -463,7 +463,7 @@ void gCullCUDA(
 	int           P,
     int           width,
     int           height,
-    const bool   *bool_mask,        // [width*height], true=keep, false=skip
+    const int   *binary_mask,        // [width*height], true=keep, false=skip
     float         focal_x,
     float         focal_y,
     const uint2  *ranges,           // [num_tiles]
@@ -471,7 +471,7 @@ void gCullCUDA(
     const float  *view2gaussian,    // [P × 16]
     const float3 *scales,           // [P]
     const float4 *conic_opacity,    // [P]
-    bool         *output)           // [P], initially all false
+    int         *output)           // [P], initially all false
 {
     auto block = cg::this_thread_block();
 	uint32_t horizontal_blocks = (width + BLOCK_X - 1) / BLOCK_X;
@@ -493,7 +493,7 @@ void gCullCUDA(
 	// Allocate storage for batches of collectively fetched data.
 	__shared__ int collected_id[BLOCK_SIZE];
 	__shared__ float4 collected_conic_opacity[BLOCK_SIZE];
-	__shared__ float collected_view2gaussian[BLOCK_SIZE * 16]; // TODO we only need 12
+	__shared__ double collected_view2gaussian[BLOCK_SIZE * 16]; // TODO we only need 12
 	__shared__ float3 collected_scale[BLOCK_SIZE];
 	
 	bool inside = pix.x < width && pix.y < height;
@@ -519,14 +519,17 @@ void gCullCUDA(
 			collected_scale[block.thread_rank()] = scales[coll_id];
 		}
 		block.sync();
-		if(inside && bool_mask[pix_id]){
-			// Iterate over current batch
-			for (int j = 0; j < min(BLOCK_SIZE, toDo); j++)
+		if(inside && (binary_mask[pix_id] != 0)){
+			int start = range.x + i * BLOCK_SIZE;
+			int remaining = range.y - start;
+			int valid = remaining > 0 ? min(remaining, BLOCK_SIZE) : 0;
+					
+			for (int j = 0; j < valid; ++j)
 			{
 				int gIdx = collected_id[j];
 				if (gIdx < 0 || gIdx >= P) continue;
 				// check if gaussian has already been processed
-				if (output[gIdx])
+				if (output[gIdx] == 1)
 				{
 					continue;
 				}
@@ -534,17 +537,17 @@ void gCullCUDA(
 				// Resample using conic matrix (cf. "Surface
 				// Splatting" by Zwicker et al., 2001)
 				float4 con_o = collected_conic_opacity[j];
-				float *view2gaussian_j = collected_view2gaussian + j * 16;
+				double *view2gaussian_j = collected_view2gaussian + j * 16;
 
 				float3 scale_j = collected_scale[j];
-				float3 ray_point = {ray.x, ray.y, 0.9}; // consider using .9 for image plane to camera (ray.z)
+				float3 ray_point = {ray.x, ray.y, 1.0}; // consider using .9 for image plane to camera (ray.z)
 
 				// EQ.2 from GOF paper - camera pos is at zero in view space/coordinate system
-				float3 cam_pos_local = {view2gaussian_j[12], view2gaussian_j[13], view2gaussian_j[14]};									// translate camera center to gaussian's local coordinate system
+				double3 cam_pos_local = {view2gaussian_j[12], view2gaussian_j[13], view2gaussian_j[14]};									// translate camera center to gaussian's local coordinate system
 				double3 cam_pos_local_scaled = {cam_pos_local.x / scale_j.x, cam_pos_local.y / scale_j.y, cam_pos_local.z / scale_j.z}; // scale cam_pos_local
 
 				// EQ.3 from GOF paper
-				float3 ray_local = transformPoint4x3_without_t(ray_point, view2gaussian_j); // rotate ray to gaussian's local coordinate system
+				double3 ray_local = transformPoint4x3_without_t(ray_point, view2gaussian_j); // rotate ray to gaussian's local coordinate system
 
 				double3 ray_local_scaled = {ray_local.x / scale_j.x, ray_local.y / scale_j.y, ray_local.z / scale_j.z}; // scale ray_local
 
@@ -555,28 +558,29 @@ void gCullCUDA(
 				double CC = cam_pos_local_scaled.x * cam_pos_local_scaled.x + cam_pos_local_scaled.y * cam_pos_local_scaled.y + cam_pos_local_scaled.z * cam_pos_local_scaled.z;
 
 				// t is the depth of the gaussian
-				float t = -BB / (2 * AA);
+				double t = -BB / (2 * AA);
 
 				if (t <= NEAR_PLANE)
 				{
 					continue;
 				}
-				const float scale = 1.0f / sqrt(AA + 1e-7);
+				const double scale = 1.0f / sqrt(AA + 1e-7);
 				double min_value = -(BB / AA) * (BB / 4.) + CC;
-				float power = -0.5f * min_value;
+				double power = -0.5f * min_value;
 				if (power > 0.0f)
 				{
 					power = 0.0f;
 				}
 
-				float alpha = min(0.99f, con_o.w * exp(power));
-				if (alpha < 1.0f / 255.0f)
+				double alpha = min(0.99f, con_o.w * exp(power));
+				if (alpha < 0.0039f) // 1.0f/255.0f
 				{
 					continue;
 				}
 
 				// tag bool_mask gaussians
-				output[gIdx] = true;
+				int prev = atomicCAS(&output[gIdx], 0, 1);
+				if (prev != 0) continue; 
 			}
 		}
 	}
@@ -586,18 +590,18 @@ void FORWARD::gCull(
 	const dim3 tile_bounds, dim3 block,
 	int P,
 	const int width, int height,
-	const bool* bool_mask,
+	const int* bin_mask,
 	const float focal_x, float focal_y,
 	const uint2 *__restrict__ ranges,
 	const uint32_t *__restrict__ point_list,
 	const float *__restrict__ view2gaussian,
 	const float3 *__restrict__ scales,
 	const float4 *__restrict__ conic_opacity,
-	bool* output){
+	int* output){
 	gCullCUDA<<<tile_bounds, block>>>(
 		P,
 		width, height,
-		bool_mask,
+		bin_mask,
 		focal_x, focal_y,
 		ranges,
 		point_list,

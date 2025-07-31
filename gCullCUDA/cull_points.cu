@@ -26,7 +26,7 @@ std::function<char*(size_t N)> resizeFunctional(torch::Tensor& t) {
 torch::Tensor
 CullGaussiansCUDA(
 	const torch::Tensor& background,
-	const torch::Tensor& bool_mask,
+	const torch::Tensor& binary_mask,
 	const torch::Tensor& means3D,
     const torch::Tensor& colors,
     const torch::Tensor& opacity,
@@ -59,9 +59,8 @@ CullGaussiansCUDA(
 
   auto int_opts = means3D.options().dtype(torch::kInt32);
   auto float_opts = means3D.options().dtype(torch::kFloat32);
-  auto bool_opts = means3D.options().dtype(torch::kBool);
 
-  torch::Tensor output = torch::full({P}, false, bool_opts); 
+  torch::Tensor output = torch::full({P}, 0, int_opts); 
   torch::Tensor radii = torch::full({P}, 0, means3D.options().dtype(torch::kInt32));
   torch::Device device(torch::kCUDA);
   torch::TensorOptions options(torch::kByte);
@@ -87,7 +86,7 @@ CullGaussiansCUDA(
 	    P, degree, M,
 		background.contiguous().data<float>(),
 		W, H,
-		bool_mask.contiguous().data_ptr<bool>(),
+		binary_mask.contiguous().data_ptr<int>(),
 		means3D.contiguous().data<float>(),
 		sh.contiguous().data_ptr<float>(),
 		colors.contiguous().data<float>(), 
@@ -105,7 +104,7 @@ CullGaussiansCUDA(
 		kernel_size,
 		subpixel_offset.contiguous().data<float>(),
 		prefiltered,
-		output.contiguous().data<bool>(),
+		output.contiguous().data<int>(),
 		radii.contiguous().data<int>(),
 		debug);
   }

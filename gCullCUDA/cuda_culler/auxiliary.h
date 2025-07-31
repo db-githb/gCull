@@ -83,9 +83,9 @@ __forceinline__ __device__ float3 transformPoint4x3(const float3& p, const float
 	return transformed;
 }
 
-__forceinline__ __device__ float3 transformPoint4x3_without_t(const float3& p, const float* matrix)
+__forceinline__ __device__ double3 transformPoint4x3_without_t(const float3& p, const double* matrix)
 {
-	float3 transformed = {
+	double3 transformed = {
 		matrix[0] * p.x + matrix[4] * p.y + matrix[8] * p.z,
 		matrix[1] * p.x + matrix[5] * p.y + matrix[9] * p.z,
 		matrix[2] * p.x + matrix[6] * p.y + matrix[10] * p.z,

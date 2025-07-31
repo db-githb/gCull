@@ -225,7 +225,7 @@ void CudaCuller::Culler::forward(
 	const int P, int D, int M,
 	const float *background,
 	const int width, int height,
-	const bool *bool_mask,
+	const int *binary_mask,
 	const float *means3D,
 	const float *shs,
 	const float *colors_precomp,
@@ -242,7 +242,7 @@ void CudaCuller::Culler::forward(
 	const float kernel_size,
 	const float *subpixel_offset,
 	const bool prefiltered,
-	bool *output,
+	int *output,
 	int *radii,
 	bool debug)
 {
@@ -363,14 +363,14 @@ void CudaCuller::Culler::forward(
 	const float *view2gaussian = view2gaussian_precomp != nullptr ? view2gaussian_precomp : geomState.view2gaussian;
 	// const float* view2gaussian = view2gaussian_precomp;
 
-	bool* d_boolMask;
-	cudaMalloc(&d_boolMask, width * height * sizeof(bool));
-	cudaMemcpy(d_boolMask, bool_mask, width * height * sizeof(bool), cudaMemcpyHostToDevice);
+	int* d_binMask;
+	cudaMalloc(&d_binMask, width * height * sizeof(int));
+	cudaMemcpy(d_binMask, binary_mask, width * height * sizeof(int), cudaMemcpyHostToDevice);
 	CHECK_CUDA(FORWARD::gCull(
 		tile_grid, block,
 		P,
 		width, height,
-		d_boolMask,
+		d_binMask,
 		focal_x, focal_y,
 		imgState.ranges,
 		binningState.point_list,
@@ -379,7 +379,7 @@ void CudaCuller::Culler::forward(
 		geomState.conic_opacity,
 		output
 	), debug);
-
-	cudaFree(d_boolMask);
+	cudaDeviceSynchronize();
+	cudaFree(d_binMask);
 	return;
 }

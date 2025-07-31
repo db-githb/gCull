@@ -22,7 +22,7 @@ def cpu_deep_copy_tuple(input_tuple):
     return tuple(copied_tensors)
 
 def cull_gaussians(
-    bool_mask,
+    binary_mask,
     means3D,
     sh,
     colors_precomp,
@@ -34,7 +34,7 @@ def cull_gaussians(
     raster_settings,
 ):
     return _CullGaussians.apply(
-        bool_mask,
+        binary_mask,
         means3D,
         sh,
         colors_precomp,
@@ -51,7 +51,7 @@ class _CullGaussians(torch.autograd.Function):
     @staticmethod
     def forward(
         ctx, # context parameter is auto passed in by PyTorch, need to keep
-        bool_mask,
+        binary_mask,
         means3D,
         sh,
         colors_precomp,
@@ -66,7 +66,7 @@ class _CullGaussians(torch.autograd.Function):
         # Restructure arguments the way that the C++ lib expects them
         args = (
             cull_settings.bg,
-            bool_mask,
+            binary_mask,
             means3D,
             colors_precomp,
             opacities,
@@ -125,7 +125,7 @@ class GaussianCuller(nn.Module):
         super().__init__()
         self.cull_settings = cull_settings
 
-    def forward(self, bool_mask, means3D, opacities, shs = None, colors_precomp = None, scales = None, rotations = None, cov3D_precomp = None, view2gaussian_precomp = None):
+    def forward(self, binary_mask, means3D, opacities, shs = None, colors_precomp = None, scales = None, rotations = None, cov3D_precomp = None, view2gaussian_precomp = None):
         
         cull_settings = self.cull_settings
 
@@ -153,7 +153,7 @@ class GaussianCuller(nn.Module):
             
         # Invoke C++/CUDA rasterization routine
         return cull_gaussians(
-            bool_mask,
+            binary_mask,
             means3D,
             shs,
             colors_precomp,

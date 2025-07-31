@@ -20,7 +20,7 @@ namespace CudaCuller
 			const float *__restrict__ view2gaussian,
 			const float3 *__restrict__ scales,
 			const float4 *__restrict__ conic_opacity,
-			bool* output);	
+			int* output);	
 
 		static void forward(
 			std::function<char* (size_t)> geometryBuffer,
@@ -29,7 +29,7 @@ namespace CudaCuller
 			const int P, int D, int M,
 			const float* background,
 			const int width, int height,
-			const bool* bool_mask,
+			const int* binary_mask,
 			const float* means3D,
 			const float* shs,
 			const float* colors_precomp,
@@ -46,7 +46,7 @@ namespace CudaCuller
 			const float kernel_size,
 			const float* subpixel_offset,
 			const bool prefiltered,
-			bool* output,
+			int* output,
 			int* radii = nullptr,
 			bool debug = false);
 	};

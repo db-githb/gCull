@@ -152,7 +152,7 @@ def get_full_proj_transform(tanHalfFovX, tanHalfFovY, viewMat):
     projMat[2, 3] = -(zfar * znear) / (zfar - znear)
     return (viewMat.unsqueeze(0).bmm(projMat.transpose(0,1).unsqueeze(0))).squeeze(0)
 
-def get_cull_list(model, camera, bool_mask):
+def get_cull_list(model, camera, binary_mask):
     background = torch.ones(3, device=model.device) # get_background(model)
     _ , T_inv = get_Rt_inv(model, camera)
     viewmat = get_viewmat(model, camera)
@@ -189,7 +189,7 @@ def get_cull_list(model, camera, bool_mask):
     rotation = get_rot_with_act_func(model) # self.quats 
 
     cull_lst = gCuller(
-            bool_mask = bool_mask,
+            binary_mask = binary_mask,
             means3D = means3D,
             shs = torch.cat((model.features_dc.unsqueeze(1), model.features_rest), dim=1),
             colors_precomp = None,
@@ -205,9 +205,9 @@ def get_mask(batch, mask_dir):
     img_idx = int(batch["image_idx"])+1 #add one for alignement
     mask_name = f"mask_{img_idx:05d}.png"
     mask_path = Path(mask_dir) / mask_name
-    bool_mask = torch.tensor(np.array(Image.open(mask_path))) == 0 # convert to bool tensor for ease of CUDA hand-off where black = True / non-black = False
+    binary_mask = torch.tensor(np.array(Image.open(mask_path)))# convert to bool tensor for ease of CUDA hand-off where black = True / non-black = False
     #show_mask(bool_mask)
-    return bool_mask
+    return binary_mask
 
 def modify_model(og_model, keep):
     model = og_model
@@ -241,24 +241,28 @@ def statcull(pipeline):
 def cull_loop(config, pipeline):
 
     mask_dir = config.datamanager.data / "masks" #get_mask_dir(config)
-    cull_lst_master = torch.zeros(pipeline.model.means.shape[0], dtype=torch.bool)
+    cull_lst_master = torch.zeros(pipeline.model.means.shape[0], dtype=torch.int)
 
     for split in "train+test".split("+"):
 
         dataset, dataloader = build_loader(config, split, pipeline.device)
         desc = f"\u2702\ufe0f\u00A0 Culling split {split} \u2702\ufe0f\u00A0"
+        if split == "test":
+            break
 
         with get_progress(desc) as progress:
             for camera_idx, (camera, batch) in enumerate(progress.track(dataloader, total=len(dataset))):
                 with torch.no_grad():
                     #frame_idx = batch["image_idx"]
                     camera.camera_to_worlds = camera.camera_to_worlds.squeeze() # splatoff rasterizer requires cam2world.shape = [3,4]
-                    bool_mask = get_mask(batch, mask_dir)
+                    binary_mask = get_mask(batch, mask_dir).int()
                     #bool_mask = get_mask(batch, config.datamanager.data / "masks_4")
                     #bool_mask.data = bool_mask_1.data
-                    cull_lst = get_cull_list(pipeline.model, camera, bool_mask)
+                    cull_lst = get_cull_list(pipeline.model, camera, binary_mask)
                     cull_lst_master |= cull_lst.to("cpu")
-                    #print(f"{camera_idx}: {cull_lst_master.sum().item()}")
+                    print(f"{camera_idx}: {cull_lst.sum().item()}/{cull_lst_master.sum().item()}")
+                    if camera_idx == 100:
+                        break
 
     return cull_lst_master
 
