@@ -182,13 +182,13 @@ def get_cull_list(model, camera, binary_mask):
 
     means3D =  model.means
 
-    filter_3D = compute_3D_filter(model, camera,.01) #model.filter3D_scale, renderer) # compute_3D_filter per camera (GOF does it for each camera at the beginning of training)
+    filter_3D = compute_3D_filter(model, camera, .01) #model.filter3D_scale, renderer) # compute_3D_filter per camera (GOF does it for each camera at the beginning of training)
     opacity = get_opacity(model, filter_3D) 
     
     scales =   get_scaling(model, filter_3D) # self.get_scaling_with_3D_filter(self) # mip-splatting 3D filter from GOF 
     rotation = get_rot_with_act_func(model) # self.quats 
 
-    cull_lst = gCuller(
+    rgb = gCuller(
             binary_mask = binary_mask,
             means3D = means3D,
             shs = torch.cat((model.features_dc.unsqueeze(1), model.features_rest), dim=1),
@@ -199,7 +199,7 @@ def get_cull_list(model, camera, binary_mask):
             cov3D_precomp = None,
             view2gaussian_precomp=None)
     
-    return cull_lst
+    return rgb
 
 def get_mask(batch, mask_dir):
     img_idx = int(batch["image_idx"])+1 #add one for alignement
@@ -240,6 +240,8 @@ def statcull(pipeline):
 
 def cull_loop(config, pipeline):
 
+    render_dir = config.datamanager.data / "renders"
+    render_dir.mkdir(parents=True, exist_ok=True)
     mask_dir = config.datamanager.data / "masks" #get_mask_dir(config)
     cull_lst_master = torch.zeros(pipeline.model.means.shape[0], dtype=torch.int)
 
@@ -247,22 +249,28 @@ def cull_loop(config, pipeline):
 
         dataset, dataloader = build_loader(config, split, pipeline.device)
         desc = f"\u2702\ufe0f\u00A0 Culling split {split} \u2702\ufe0f\u00A0"
-        if split == "test":
-            break
 
         with get_progress(desc) as progress:
-            for camera_idx, (camera, batch) in enumerate(progress.track(dataloader, total=len(dataset))):
+            for idx, (camera, batch) in enumerate(progress.track(dataloader, total=len(dataset))):
                 with torch.no_grad():
                     #frame_idx = batch["image_idx"]
                     camera.camera_to_worlds = camera.camera_to_worlds.squeeze() # splatoff rasterizer requires cam2world.shape = [3,4]
                     binary_mask = get_mask(batch, mask_dir).int()
                     #bool_mask = get_mask(batch, config.datamanager.data / "masks_4")
                     #bool_mask.data = bool_mask_1.data
-                    cull_lst = get_cull_list(pipeline.model, camera, binary_mask)
-                    cull_lst_master |= cull_lst.to("cpu")
-                    print(f"{camera_idx}: {cull_lst.sum().item()}/{cull_lst_master.sum().item()}")
-                    if camera_idx == 100:
-                        break
+                    rgb = get_cull_list(pipeline.model, camera, binary_mask)
+                    img = (
+                            rgb[:3,:,:]
+                            .clamp(0.0, 1.0)          # safety
+                            .mul(255)                # scale
+                            .to(torch.uint8)         # uint8
+                            .permute(1, 2, 0)        # [H,W,3]
+                            .cpu()
+                            .numpy()
+                        )
+                    Image.fromarray(img).save(render_dir / f"frame_{idx:05d}.png")
+                    #cull_lst_master |= cull_lst.to("cpu")
+                    #print(f"{idx}: {cull_lst.sum().item()}/{cull_lst_master.sum().item()}")
 
-    return cull_lst_master
+    return
 

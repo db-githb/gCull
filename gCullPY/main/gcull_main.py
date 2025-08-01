@@ -76,15 +76,16 @@ class DatasetCull(BaseCull):
         #mp.run_mask_processing()
 
         # Phase 2 - run gCull
-        cull_lst = cull_loop(config, pipeline)
-        keep = cull_lst == 0
-        pipeline.model = modify_model(pipeline.model, keep)
-        CONSOLE.log(f"Total culled: {cull_lst.sum().item()}/{statcull_total} ➜ New Total = {pipeline.model.means.shape[0]}, writing to ply...")
+        rgb = cull_loop(config, pipeline)
+        print("done")
+        #keep = cull_lst == 0
+        #pipeline.model = modify_model(pipeline.model, keep)
+        #CONSOLE.log(f"Total culled: {cull_lst.sum().item()}/{statcull_total} ➜ New Total = {pipeline.model.means.shape[0]}, writing to ply...")
 
         # write modified model to file
-        filename = write_ply(self.model_path, pipeline.model)
-        path = Path(filename)
-        dir = config.datamanager.data.parents[1] / path.parent
-        linked_name = f"[link=file://{dir}/]{path.name}[/link]"
-        TABLE.add_row(f"Final 3DGS model", linked_name)
-        CONSOLE.log(Panel(TABLE, title="[bold green]🎉 Cull Complete![/bold green] 🎉", expand=False))
+        #filename = write_ply(self.model_path, pipeline.model)
+        #path = Path(filename)
+        #dir = config.datamanager.data.parents[1] / path.parent
+        #linked_name = f"[link=file://{dir}/]{path.name}[/link]"
+        #TABLE.add_row(f"Final 3DGS model", linked_name)
+        #CONSOLE.log(Panel(TABLE, title="[bold green]🎉 Cull Complete![/bold green] 🎉", expand=False))

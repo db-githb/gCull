@@ -41,18 +41,26 @@ namespace FORWARD
 	
 
 	void gCull(
-		const dim3 tile_bounds, dim3 block,
-		int P,
-		const int width, int height,
-		const int* binary_mask,
-		const float focal_x, float focal_y,
-		const uint2 *__restrict__ ranges,
-		const uint32_t *__restrict__ point_list,
-		const float *__restrict__ view2gaussian,
-		const float3 *__restrict__ scales,
-		const float4 *__restrict__ conic_opacity,
-		int* output
-	);
+		const dim3 grid, dim3 block,
+		const uint2* ranges,
+		const uint32_t* point_list,
+		int W, int H,
+		float focal_x, float focal_y,
+		const float2* subpixel_offset,
+		const float2* points_xy_image,
+		const float* features,
+		const float* view2gaussian,
+		const float* viewmatrix,
+		const float3* means3D,
+		const float3* scales,
+		const float* depths,
+		const float4* conic_opacity,
+		float* final_T,
+		uint32_t* n_contrib,
+		float* center_depth,
+		float4* center_alphas,
+		const float* bg_color,
+		float* out_color);
 	
 	glm::mat3 quat2rot(const glm::vec4 q);
 }

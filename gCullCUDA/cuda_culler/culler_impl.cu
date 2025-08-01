@@ -219,31 +219,30 @@ CudaCuller::BinningState CudaCuller::BinningState::fromChunk(char *&chunk, size_
 // Forward rendering procedure for differentiable rasterization
 // of Gaussians.
 void CudaCuller::Culler::forward(
-	std::function<char *(size_t)> geometryBuffer,
-	std::function<char *(size_t)> binningBuffer,
-	std::function<char *(size_t)> imageBuffer,
+	std::function<char* (size_t)> geometryBuffer,
+	std::function<char* (size_t)> binningBuffer,
+	std::function<char* (size_t)> imageBuffer,
 	const int P, int D, int M,
-	const float *background,
+	const float* background,
 	const int width, int height,
-	const int *binary_mask,
-	const float *means3D,
-	const float *shs,
-	const float *colors_precomp,
-	const float *opacities,
-	const float *scales,
+	const float* means3D,
+	const float* shs,
+	const float* colors_precomp,
+	const float* opacities,
+	const float* scales,
 	const float scale_modifier,
-	const float *rotations,
-	const float *cov3D_precomp,
-	const float *view2gaussian_precomp,
-	const float *viewmatrix,
-	const float *projmatrix,
-	const float *cam_pos,
+	const float* rotations,
+	const float* cov3D_precomp,
+	const float* view2gaussian_precomp,
+	const float* viewmatrix,
+	const float* projmatrix,
+	const float* cam_pos,
 	const float tan_fovx, float tan_fovy,
 	const float kernel_size,
-	const float *subpixel_offset,
+	const float* subpixel_offset,
 	const bool prefiltered,
-	int *output,
-	int *radii,
+	float* out_color,
+	int* radii,
 	bool debug)
 {
 	const float focal_y = height / (2.0f * tan_fovy);
@@ -355,7 +354,6 @@ void CudaCuller::Culler::forward(
 			num_rendered,
 			binningState.point_list_keys,
 			imgState.ranges);
-	CHECK_CUDA(, debug)
 
 	//  Let each tile blend its range of Gaussians independently in parallel
 	const float *feature_ptr = colors_precomp != nullptr ? colors_precomp : geomState.rgb;
@@ -363,23 +361,27 @@ void CudaCuller::Culler::forward(
 	const float *view2gaussian = view2gaussian_precomp != nullptr ? view2gaussian_precomp : geomState.view2gaussian;
 	// const float* view2gaussian = view2gaussian_precomp;
 
-	int* d_binMask;
-	cudaMalloc(&d_binMask, width * height * sizeof(int));
-	cudaMemcpy(d_binMask, binary_mask, width * height * sizeof(int), cudaMemcpyHostToDevice);
 	CHECK_CUDA(FORWARD::gCull(
 		tile_grid, block,
-		P,
-		width, height,
-		d_binMask,
-		focal_x, focal_y,
 		imgState.ranges,
 		binningState.point_list,
+		width, height,
+		focal_x, focal_y,
+		(float2*)subpixel_offset,
+		geomState.means2D,
+		feature_ptr,
 		view2gaussian,
-		(float3 *)scales,
+		viewmatrix,
+		(float3*)means3D,
+		(float3*)scales,
+		geomState.depths,
 		geomState.conic_opacity,
-		output
-	), debug);
+		imgState.accum_alpha,
+		imgState.n_contrib,
+		imgState.center_depth,
+		imgState.center_alphas,
+		background,
+		out_color), debug);
 	cudaDeviceSynchronize();
-	cudaFree(d_binMask);
 	return;
 }

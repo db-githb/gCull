@@ -6,6 +6,9 @@
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
 namespace cg = cooperative_groups;
+#define NUM_CHANNELS 3 // Default 3, RGB
+#define BLOCK_X 16
+#define BLOCK_Y 16
 
 // Forward method for converting the input spherical harmonics
 // coefficients of each Gaussian to a simple RGB color.
@@ -458,32 +461,45 @@ void FORWARD::preprocess(int P, int D, int M,
 			   true)
 }
 
-__global__ __launch_bounds__(BLOCK_SIZE)
-void gCullCUDA(
-	int           P,
-    int           width,
-    int           height,
-    const int   *binary_mask,        // [width*height], true=keep, false=skip
-    float         focal_x,
-    float         focal_y,
-    const uint2  *ranges,           // [num_tiles]
-    const uint32_t *point_list,     // [sum over ranges]
-    const float  *view2gaussian,    // [P × 16]
-    const float3 *scales,           // [P]
-    const float4 *conic_opacity,    // [P]
-    int         *output)           // [P], initially all false
+template <uint32_t CHANNELS>
+__global__ void __launch_bounds__(BLOCK_X * BLOCK_Y)
+gCullCUDA(
+	const uint2* __restrict__ ranges,
+	const uint32_t* __restrict__ point_list,
+	int W, int H,
+	float focal_x, float focal_y,
+	const float2* __restrict__ subpixel_offset,
+	const float2* __restrict__ points_xy_image,
+	const float* __restrict__ features,
+	const float* __restrict__ view2gaussian,
+	const float* viewmatrix,
+	const float3* __restrict__ means3D,
+	const float3* __restrict__ scales,
+	const float* __restrict__ depths,
+	const float4* __restrict__ conic_opacity,
+	float* __restrict__ final_T,
+	uint32_t* __restrict__ n_contrib,
+	float* __restrict__ center_depth,
+	float4* __restrict__ point_alphas,
+	const float* __restrict__ bg_color,
+	float* __restrict__ out_color)
 {
-    auto block = cg::this_thread_block();
-	uint32_t horizontal_blocks = (width + BLOCK_X - 1) / BLOCK_X;
-	// compute pixel coords
-	uint2 pix_min = {block.group_index().x * BLOCK_X, block.group_index().y * BLOCK_Y};
-	uint2 pix_max = {min(pix_min.x + BLOCK_X, width), min(pix_min.y + BLOCK_Y, height)};
-	uint2 pix = {pix_min.x + block.thread_index().x, pix_min.y + block.thread_index().y};
-	uint32_t pix_id = width * pix.y + pix.x;
-	if (pix.x >= width || pix.y >= height) return;
+	// Identify current tile and associated min/max pixel range.
+	auto block = cg::this_thread_block();
+	uint32_t horizontal_blocks = (W + BLOCK_X - 1) / BLOCK_X;
+	uint2 pix_min = { block.group_index().x * BLOCK_X, block.group_index().y * BLOCK_Y };
+	uint2 pix_max = { min(pix_min.x + BLOCK_X, W), min(pix_min.y + BLOCK_Y , H) };
+	uint2 pix = { pix_min.x + block.thread_index().x, pix_min.y + block.thread_index().y };
+	uint32_t pix_id = W * pix.y + pix.x;
+	float2 pixf = { (float)pix.x + 0.5f, (float)pix.y + 0.5f}; // TODO plus 0.5
 
-	float2 pixf = {(float)pix.x + 0.5, (float)pix.y + 0.5}; 
-	float2 ray = {(pixf.x - width / 2.) / focal_x, (pixf.y - height / 2.) / focal_y};
+	// Check if this thread is associated with a valid pixel or outside.
+	bool inside = pix.x < W&& pix.y < H;
+	// Done threads can help with fetching, but don't rasterize
+	bool done = !inside;
+
+	// create the ray
+	float2 ray = { (pixf.x - W/2.) / focal_x, (pixf.y - H/2.) / focal_y };
 
 	// Load start/end range of IDs to process in bit sorted list.
 	uint2 range = ranges[block.group_index().y * horizontal_blocks + block.group_index().x];
@@ -493,11 +509,18 @@ void gCullCUDA(
 	// Allocate storage for batches of collectively fetched data.
 	__shared__ int collected_id[BLOCK_SIZE];
 	__shared__ float4 collected_conic_opacity[BLOCK_SIZE];
-	__shared__ double collected_view2gaussian[BLOCK_SIZE * 16]; // TODO we only need 12
-	__shared__ float3 collected_scale[BLOCK_SIZE];
-	
-	bool inside = pix.x < width && pix.y < height;
-	bool done = !inside; 
+	__shared__ float collected_view2gaussian[BLOCK_SIZE * 10]; 
+
+	// Initialize helper variables
+	float T = 1.0f;
+	uint32_t contributor = 0;
+	uint32_t last_contributor = 0;
+	uint32_t max_contributor = -1;
+	float C[CHANNELS*2+2] = { 0 };
+
+	float dist1 = {0};
+	float dist2 = {0};
+	float distortion = {0};
 
 	// Iterate over batches until all done or range is complete
 	for (int i = 0; i < rounds; i++, toDo -= BLOCK_SIZE)
@@ -513,100 +536,174 @@ void gCullCUDA(
 		{
 			int coll_id = point_list[range.x + progress];
 			collected_id[block.thread_rank()] = coll_id;
+			// collected_xy[block.thread_rank()] = points_xy_image[coll_id];
 			collected_conic_opacity[block.thread_rank()] = conic_opacity[coll_id];
-			for (int ii = 0; ii < 16; ii++)
-				collected_view2gaussian[16 * block.thread_rank() + ii] = view2gaussian[coll_id * 16 + ii];
-			collected_scale[block.thread_rank()] = scales[coll_id];
+			// collected_depth[block.thread_rank()] = depths[coll_id];
+			for (int ii = 0; ii < 10; ii++)
+				collected_view2gaussian[10 * block.thread_rank() + ii] = view2gaussian[coll_id * 10 + ii];
 		}
 		block.sync();
-		if(inside && (binary_mask[pix_id] != 0)){
-			int start = range.x + i * BLOCK_SIZE;
-			int remaining = range.y - start;
-			int valid = remaining > 0 ? min(remaining, BLOCK_SIZE) : 0;
-					
-			for (int j = 0; j < valid; ++j)
-			{
-				int gIdx = collected_id[j];
-				if (gIdx < 0 || gIdx >= P) continue;
-				// check if gaussian has already been processed
-				if (output[gIdx] == 1)
-				{
-					continue;
-				}
 
-				// Resample using conic matrix (cf. "Surface
-				// Splatting" by Zwicker et al., 2001)
-				float4 con_o = collected_conic_opacity[j];
-				double *view2gaussian_j = collected_view2gaussian + j * 16;
+		// Iterate over current batch
+		for (int j = 0; !done && j < min(BLOCK_SIZE, toDo); j++)
+		{
+			// Keep track of current position in range
+			contributor++;
 
-				float3 scale_j = collected_scale[j];
-				float3 ray_point = {ray.x, ray.y, 1.0}; // consider using .9 for image plane to camera (ray.z)
+			float4 con_o = collected_conic_opacity[j];
+			float* view2gaussian_j = collected_view2gaussian + j * 10;
+			
+			float3 ray_point = { ray.x , ray.y, 1.0 };
+			
+			const float normal[3] = { 
+				view2gaussian_j[0] * ray_point.x + view2gaussian_j[1] * ray_point.y + view2gaussian_j[2], 
+				view2gaussian_j[1] * ray_point.x + view2gaussian_j[3] * ray_point.y + view2gaussian_j[4],
+				view2gaussian_j[2] * ray_point.x + view2gaussian_j[4] * ray_point.y + view2gaussian_j[5]
+			};
 
-				// EQ.2 from GOF paper - camera pos is at zero in view space/coordinate system
-				double3 cam_pos_local = {view2gaussian_j[12], view2gaussian_j[13], view2gaussian_j[14]};									// translate camera center to gaussian's local coordinate system
-				double3 cam_pos_local_scaled = {cam_pos_local.x / scale_j.x, cam_pos_local.y / scale_j.y, cam_pos_local.z / scale_j.z}; // scale cam_pos_local
+			// use AA, BB, CC so that the name is unique
+			double AA = ray.x * normal[0] + ray.y * normal[1] + normal[2];
+			double BB = 2 * (view2gaussian_j[6] * ray_point.x + view2gaussian_j[7] * ray_point.y + view2gaussian_j[8]);
+			float CC = view2gaussian_j[9];
+			
+			// t is the depth of the gaussian
+			float t = -BB/(2*AA);
+			// depth must be positive otherwise it is not valid and we skip it
+			if (t <= NEAR_PLANE)
+				continue;
 
-				// EQ.3 from GOF paper
-				double3 ray_local = transformPoint4x3_without_t(ray_point, view2gaussian_j); // rotate ray to gaussian's local coordinate system
+			// the scale of the gaussian is 1.f / sqrt(AA)
+			double min_value = -(BB/AA) * (BB/4.) + CC;
 
-				double3 ray_local_scaled = {ray_local.x / scale_j.x, ray_local.y / scale_j.y, ray_local.z / scale_j.z}; // scale ray_local
-
-				// compute the minimal value
-				// use AA, BB, CC so that the name is unique
-				double AA = ray_local_scaled.x * ray_local_scaled.x + ray_local_scaled.y * ray_local_scaled.y + ray_local_scaled.z * ray_local_scaled.z;
-				double BB = 2 * (ray_local_scaled.x * cam_pos_local_scaled.x + ray_local_scaled.y * cam_pos_local_scaled.y + ray_local_scaled.z * cam_pos_local_scaled.z);
-				double CC = cam_pos_local_scaled.x * cam_pos_local_scaled.x + cam_pos_local_scaled.y * cam_pos_local_scaled.y + cam_pos_local_scaled.z * cam_pos_local_scaled.z;
-
-				// t is the depth of the gaussian
-				double t = -BB / (2 * AA);
-
-				if (t <= NEAR_PLANE)
-				{
-					continue;
-				}
-				const double scale = 1.0f / sqrt(AA + 1e-7);
-				double min_value = -(BB / AA) * (BB / 4.) + CC;
-				double power = -0.5f * min_value;
-				if (power > 0.0f)
-				{
-					power = 0.0f;
-				}
-
-				double alpha = min(0.99f, con_o.w * exp(power));
-				if (alpha < 0.0039f) // 1.0f/255.0f
-				{
-					continue;
-				}
-
-				// tag bool_mask gaussians
-				int prev = atomicCAS(&output[gIdx], 0, 1);
-				if (prev != 0) continue; 
+			float power = -0.5f * min_value;
+			if (power > 0.0f){
+				power = 0.0f;
 			}
+			
+			// Eq. (2) from 3D Gaussian splatting paper.
+			// Obtain alpha by multiplying with Gaussian opacity
+			// and its exponential falloff from mean.
+			// Avoid numerical instabilities (see paper appendix). 
+			float alpha = min(0.99f, con_o.w * exp(power));
+			if (alpha < 1.0f / 255.0f)
+				continue;
+			float test_T = T * (1 - alpha);
+			if (test_T < 0.0001f)
+			{
+				done = true;
+				continue;
+			}
+
+			// NDC mapping is taken from 2DGS paper, please check here https://arxiv.org/pdf/2403.17888.pdf
+			const float max_t = t;
+			const float mapped_max_t = (FAR_PLANE * max_t - FAR_PLANE * NEAR_PLANE) / ((FAR_PLANE - NEAR_PLANE) * max_t);
+			
+			// normalize normal
+			float length = sqrt(normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2] + 1e-7);
+			const float normal_normalized[3] = { -normal[0] / length, -normal[1] / length, -normal[2] / length };
+
+			// distortion loss is taken from 2DGS paper, please check https://arxiv.org/pdf/2403.17888.pdf
+			float A = 1-T;
+			float error = mapped_max_t * mapped_max_t * A + dist2 - 2 * mapped_max_t * dist1;
+			distortion += error * alpha * T;
+			
+			dist1 += mapped_max_t * alpha * T;
+			dist2 += mapped_max_t * mapped_max_t * alpha * T;
+
+			// Eq. (3) from 3D Gaussian splatting paper.
+			for (int ch = 0; ch < CHANNELS; ch++)
+				C[ch] += features[collected_id[j] * CHANNELS + ch] * alpha * T;
+			
+			// normal
+			for (int ch = 0; ch < CHANNELS; ch++)
+				C[CHANNELS + ch] += normal_normalized[ch] * alpha * T;
+			
+			// depth and alpha
+			if (T > 0.5){
+				C[CHANNELS * 2] = t;
+				max_contributor = contributor;
+			}
+			C[CHANNELS * 2 + 1] += alpha * T;
+
+			T = test_T;
+
+			// Keep track of last range entry to update this
+			// pixel.
+			last_contributor = contributor;
 		}
+	}
+
+	// All threads that treat valid pixel write out their final
+	// rendering data to the frame and auxiliary buffers.
+	if (inside)
+	{
+		// add the background 
+		const float distortion_before_normalized = distortion;
+		// normalize
+		distortion /= (1 - T) * (1 - T) + 1e-7;
+
+		final_T[pix_id] = T;
+		final_T[pix_id + H * W] = dist1;
+		final_T[pix_id + 2 * H * W] = dist2;
+		final_T[pix_id + 3 * H * W] = distortion_before_normalized;
+
+		n_contrib[pix_id] = last_contributor;
+		n_contrib[pix_id + H * W] = max_contributor;
+
+		for (int ch = 0; ch < CHANNELS; ch++)
+			out_color[ch * H * W + pix_id] = C[ch] + T * bg_color[ch];
+
+		// normal
+		for (int ch = 0; ch < CHANNELS; ch++){
+			out_color[(CHANNELS + ch) * H * W + pix_id] = C[CHANNELS+ch];
+		}
+
+		// depth and alpha
+		out_color[DEPTH_OFFSET * H * W + pix_id] = C[CHANNELS * 2];
+		out_color[ALPHA_OFFSET * H * W + pix_id] = C[CHANNELS * 2 + 1];
+		out_color[DISTORTION_OFFSET * H * W + pix_id] = distortion;
 	}
 }
 
 void FORWARD::gCull(
-	const dim3 tile_bounds, dim3 block,
-	int P,
-	const int width, int height,
-	const int* bin_mask,
-	const float focal_x, float focal_y,
-	const uint2 *__restrict__ ranges,
-	const uint32_t *__restrict__ point_list,
-	const float *__restrict__ view2gaussian,
-	const float3 *__restrict__ scales,
-	const float4 *__restrict__ conic_opacity,
-	int* output){
-	gCullCUDA<<<tile_bounds, block>>>(
-		P,
-		width, height,
-		bin_mask,
-		focal_x, focal_y,
+	const dim3 grid, dim3 block,
+	const uint2* ranges,
+	const uint32_t* point_list,
+	int W, int H,
+	float focal_x, float focal_y,
+	const float2* subpixel_offset,
+	const float2* means2D,
+	const float* colors,
+	const float* view2gaussian,
+	const float* viewmatrix,
+	const float3* means3D,
+	const float3* scales,
+	const float* depths,
+	const float4* conic_opacity,
+	float* final_T,
+	uint32_t* n_contrib,
+	float* center_depth,
+	float4* center_alphas,
+	const float* bg_color,
+	float* out_color){
+	gCullCUDA<NUM_CHANNELS><<<grid, block>>>(
 		ranges,
 		point_list,
+		W, H,
+		focal_x, focal_y,
+		subpixel_offset,
+		means2D,
+		colors,
 		view2gaussian,
+		viewmatrix,
+		means3D,
 		scales,
+		depths,
 		conic_opacity,
-		output);
+		final_T,
+		n_contrib,
+		center_depth,
+		center_alphas,
+		bg_color,
+		out_color);
 }

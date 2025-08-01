@@ -60,8 +60,10 @@ CullGaussiansCUDA(
   auto int_opts = means3D.options().dtype(torch::kInt32);
   auto float_opts = means3D.options().dtype(torch::kFloat32);
 
-  torch::Tensor output = torch::full({P}, 0, int_opts); 
+  torch::Tensor out_color = torch::full({OUTPUT_CHANNELS, H, W}, 0.0, float_opts);
+  //torch::Tensor output = torch::full({P}, 0, int_opts); 
   torch::Tensor radii = torch::full({P}, 0, means3D.options().dtype(torch::kInt32));
+  
   torch::Device device(torch::kCUDA);
   torch::TensorOptions options(torch::kByte);
   torch::Tensor geomBuffer = torch::empty({0}, options.device(device));
@@ -70,7 +72,7 @@ CullGaussiansCUDA(
   std::function<char*(size_t)> geomFunc = resizeFunctional(geomBuffer);
   std::function<char*(size_t)> binningFunc = resizeFunctional(binningBuffer);
   std::function<char*(size_t)> imgFunc = resizeFunctional(imgBuffer);
-
+  
   if(P != 0)
   {
 	  int M = 0;
@@ -86,7 +88,6 @@ CullGaussiansCUDA(
 	    P, degree, M,
 		background.contiguous().data<float>(),
 		W, H,
-		binary_mask.contiguous().data_ptr<int>(),
 		means3D.contiguous().data<float>(),
 		sh.contiguous().data_ptr<float>(),
 		colors.contiguous().data<float>(), 
@@ -104,10 +105,10 @@ CullGaussiansCUDA(
 		kernel_size,
 		subpixel_offset.contiguous().data<float>(),
 		prefiltered,
-		output.contiguous().data<int>(),
+		out_color.contiguous().data<float>(),
 		radii.contiguous().data<int>(),
 		debug);
   }
 
-  return output;
+  return out_color;
 }

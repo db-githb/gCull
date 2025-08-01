@@ -8,19 +8,7 @@ namespace CudaCuller
 {
 	class Culler
 	{
-	public:
-		
-		static void gCull(
-			const dim3 tile_bounds, dim3 block,
-			const int width, int height,
-			const bool* sky,
-			const float focal_x, float focal_y,
-			const uint2 *__restrict__ ranges,
-			const uint32_t *__restrict__ point_list,
-			const float *__restrict__ view2gaussian,
-			const float3 *__restrict__ scales,
-			const float4 *__restrict__ conic_opacity,
-			int* output);	
+	public:	
 
 		static void forward(
 			std::function<char* (size_t)> geometryBuffer,
@@ -29,7 +17,6 @@ namespace CudaCuller
 			const int P, int D, int M,
 			const float* background,
 			const int width, int height,
-			const int* binary_mask,
 			const float* means3D,
 			const float* shs,
 			const float* colors_precomp,
@@ -46,7 +33,7 @@ namespace CudaCuller
 			const float kernel_size,
 			const float* subpixel_offset,
 			const bool prefiltered,
-			int* output,
+			float* out_color,
 			int* radii = nullptr,
 			bool debug = false);
 	};
