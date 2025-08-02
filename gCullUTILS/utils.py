@@ -21,7 +21,7 @@ def compute_downscale_factor(
     return factor
 
 def downscale_paths(
-    paths: list[Path],
+    paths,
     factor: int,
     use_nearest: bool = False,
 ):
@@ -46,7 +46,7 @@ def downscale_paths(
           w2, h2 = math.floor(w/factor), math.floor(h/factor)
 
           # build ffmpeg command
-          vf = f"scale={w2}:{h2}" + (":flags=neighbor" if use_nearest else "")
+          vf = f"scale={w}:{h}" + (":flags=neighbor" if use_nearest else "")
           cmd = [
               "ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-noautorotate",
               "-i", str(p),

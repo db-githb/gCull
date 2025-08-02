@@ -29,7 +29,7 @@ def get_bounding_boxes(image_pil, prompt, processor, dino):
   results = processor.post_process_grounded_object_detection(
     outputs,
     inputs.input_ids,
-    box_threshold=0.9,
+    box_threshold=0.5,
     text_threshold=0.25,
     target_sizes=[image_pil.size[::-1]]
   )
@@ -41,7 +41,7 @@ def get_masks(image_pil, boxes, predictor):
 
   if boxes.size == 0: # catch no predictions for prompt
     h, w = arr.shape[:2]
-    best_mask = np.ones((h, w), dtype=bool)
+    best_mask = np.zeros((h, w), dtype=bool)
 
   for box in boxes:
       masks, scores, _ = predictor.predict(box=box, multimask_output=True)
