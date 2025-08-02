@@ -228,7 +228,7 @@ class DatasetRender(BaseRender):
             plt.show()
 
         def get_mask(camera_idx, mask_root):
-            filepath = "/home/damian/projects/gCull/data/VelarOutput/masks_4/"+str(camera_idx+1).zfill(4)+".png"#mask_root+"/masks/mask_"+str(camera_idx+1).zfill(4)+".png"
+            filepath = "/home/damian/projects/gCull/data/IMG_4718/masks_large_og/mask_"+str(camera_idx+1).zfill(5)+".png"#mask_root+"/masks/mask_"+str(camera_idx+1).zfill(4)+".png"
             bool_mask = torch.tensor(np.array(Image.open(filepath))) == 0 # convert to bool tensor for ease of CUDA hand-off where black = True / non-black = False
             #show_mask(bool_mask)
             return bool_mask
