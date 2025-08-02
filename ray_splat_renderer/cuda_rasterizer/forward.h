@@ -54,6 +54,7 @@ namespace FORWARD
 
 	void skycull(
 		const dim3 tile_bounds, dim3 block,
+		const int P,
 		const int width, int height,
 		const bool* bool_mask,
 		const float focal_x, float focal_y,

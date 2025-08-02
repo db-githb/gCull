@@ -386,7 +386,7 @@ int CudaRasterizer::Rasterizer::forward(
 	cudaMemcpy(d_boolMask, bool_mask, width * height * sizeof(bool), cudaMemcpyHostToDevice);
 	CHECK_CUDA(FORWARD::skycull(
 		tile_grid, block,
-		width, height,
+		P, width, height,
 		d_boolMask,
 		focal_x, focal_y,
 		imgState.ranges,

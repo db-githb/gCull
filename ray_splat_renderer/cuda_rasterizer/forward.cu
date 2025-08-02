@@ -470,6 +470,7 @@ void FORWARD::preprocess(int P, int D, int M,
 
 __global__ __launch_bounds__(BLOCK_X *BLOCK_Y)
 	void skycullCUDA(
+		const int P,
 		const int width,
 		const int height,
 		const bool* bool_mask,
@@ -533,6 +534,8 @@ __global__ __launch_bounds__(BLOCK_X *BLOCK_Y)
 			{
 				int gIdx = collected_id[j];
 
+				if (gIdx < 0 || gIdx >= P) continue;
+				
 				// check if gaussian has already been processed
 				if (output[gIdx])
 				{
@@ -592,6 +595,7 @@ __global__ __launch_bounds__(BLOCK_X *BLOCK_Y)
 
 void FORWARD::skycull(
 	const dim3 tile_bounds, dim3 block,
+	const int P,
 	const int width, int height,
 	const bool* bool_mask,
 	const float focal_x, float focal_y,
@@ -602,6 +606,7 @@ void FORWARD::skycull(
 	const float4 *__restrict__ conic_opacity,
 	bool* output){
 	skycullCUDA<<<tile_bounds, block>>>(
+		P,
 		width, height,
 		bool_mask,
 		focal_x, focal_y,
