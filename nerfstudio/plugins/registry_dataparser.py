@@ -56,7 +56,7 @@ def discover_dataparsers() -> t.Tuple[t.Dict[str, DataParserConfig], t.Dict[str,
     descriptions = {}
     discovered_entry_points = entry_points(group="nerfstudio.dataparser_configs")
     for name in discovered_entry_points.names:
-        spec = discovered_entry_points[name].load()
+        spec = None #discovered_entry_points[name].load()
         if not isinstance(spec, DataParserSpecification):
             CONSOLE.print(
                 f"[bold yellow]Warning: Could not entry point {spec} as it is not an instance of DataParserSpecification"

@@ -41,7 +41,7 @@ from nerfstudio.viewer_legacy.server.gui_utils import parse_object
 from nerfstudio.viewer_legacy.server.render_state_machine import RenderAction, RenderStateMachine
 from nerfstudio.viewer_legacy.server.utils import get_intrinsics_matrix_and_camera_to_world_h
 from nerfstudio.viewer_legacy.server.viewer_elements import ViewerControl, ViewerElement
-from nerfstudio.viewer_legacy.viser import ViserServer
+from nerfstudio.viewer_legacy.viser.server import ViserServer
 from nerfstudio.viewer_legacy.viser.messages import (
     CameraMessage,
     CameraPathOptionsRequest,

@@ -25,7 +25,8 @@ from typing import TYPE_CHECKING, Any, Callable, Generic, List, Optional, Tuple
 from typing_extensions import TypeVar
 
 from nerfstudio.cameras.cameras import Cameras
-from nerfstudio.viewer_legacy.viser import GuiHandle, GuiSelectHandle, ViserServer
+from nerfstudio.viewer_legacy.viser.gui import GuiHandle, GuiSelectHandle
+from nerfstudio.viewer_legacy.viser.server import ViserServer
 from nerfstudio.viewer_legacy.viser.messages import ClickMessage
 
 if TYPE_CHECKING:
