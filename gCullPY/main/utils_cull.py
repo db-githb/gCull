@@ -5,6 +5,7 @@ from pathlib import Path
 from gCullCUDA import GaussianCullSettings, GaussianCuller
 from gCullPY.main.utils_main import build_loader
 from gCullUTILS.rich_utils import get_progress
+from gsplat_gof.gsplat.rendering import raytracing 
 
 # taken from gaussian-opacity-fields
 def compute_3D_filter(model, camera, s):
@@ -152,6 +153,23 @@ def get_full_proj_transform(tanHalfFovX, tanHalfFovY, viewMat):
     projMat[2, 3] = -(zfar * znear) / (zfar - znear)
     return (viewMat.unsqueeze(0).bmm(projMat.transpose(0,1).unsqueeze(0))).squeeze(0)
 
+def raytrace_rgb(model, camera):
+    device = model.means.device
+    rgb, _, _ = raytracing(
+        means = model.means,
+        quats = model.quats,
+        scales = model.scales,
+        opacities = model.opacities.squeeze(1),
+        colors = model.colors,
+        viewmats = model.get_viewmat(camera.camera_to_worlds.unsqueeze(0)),
+        Ks = camera.get_intrinsics_matrices().to(device),
+        width = camera.width,
+        height = camera.height,
+        backgrounds=torch.ones(1,3, device=device),
+        packed=False
+    )
+    return rgb
+
 def get_cull_list(model, camera, binary_mask):
     background = torch.ones(3, device=model.device) # get_background(model)
     _ , T_inv = get_Rt_inv(model, camera)
@@ -258,13 +276,13 @@ def cull_loop(config, pipeline):
                     binary_mask = get_mask(batch, mask_dir).int()
                     #bool_mask = get_mask(batch, config.datamanager.data / "masks_4")
                     #bool_mask.data = bool_mask_1.data
-                    rgb = get_cull_list(pipeline.model, camera, binary_mask)
+                    rgb = raytrace_rgb(pipeline.model, camera) #get_cull_list(pipeline.model, camera, binary_mask)
                     img = (
-                            rgb[:3,:,:]
+                            rgb#[:3,:,:]
                             .clamp(0.0, 1.0)          # safety
                             .mul(255)                # scale
                             .to(torch.uint8)         # uint8
-                            .permute(1, 2, 0)        # [H,W,3]
+                            #.permute(1, 2, 0)        # [H,W,3]
                             .cpu()
                             .numpy()
                         )

@@ -58,12 +58,12 @@ class DatasetCull(BaseCull):
         )
 
         # Phase 1 - run statCull
-        starting_total = pipeline.model.means.shape[0]
-        cull_mask = statcull(pipeline)
-        keep = ~cull_mask
-        pipeline.model = modify_model(pipeline.model, keep)
-        statcull_total = pipeline.model.means.shape[0]
-        CONSOLE.log(f"Phase 1 culled: {cull_mask.sum().item()}/{starting_total} ➜ New Total = {statcull_total}")
+        #starting_total = pipeline.model.means.shape[0]
+        #cull_mask = statcull(pipeline)
+        #keep = ~cull_mask
+        #pipeline.model = modify_model(pipeline.model, keep)
+        #statcull_total = pipeline.model.means.shape[0]
+        #CONSOLE.log(f"Phase 1 culled: {cull_mask.sum().item()}/{starting_total} ➜ New Total = {statcull_total}")
        
 
         # render images from modified model
