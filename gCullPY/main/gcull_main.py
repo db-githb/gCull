@@ -27,7 +27,7 @@ from typing import Optional
 from gCullPY.pipelines.base_pipeline import VanillaPipelineConfig
 
 from gCullPY.main.utils_main import write_ply, load_config, render_loop
-from gCullPY.main.utils_cull import statcull, modify_model, cull_loop, visualize_mask_and_points
+from gCullPY.main.utils_cull import statcull, modify_model, cull_loop, visualize_mask_and_points, get_ground_gaussians
 from gCullMASK.mask_main import MaskProcessor
 from gCullUTILS.rich_utils import CONSOLE, TABLE
 from rich.panel import Panel
@@ -68,18 +68,25 @@ class DatasetCull(BaseCull):
 
         # render images from modified model
         CONSOLE.print("[bold][yellow]Rendering frames for mask extraction...[/bold]")
-        render_dir = render_loop(self.model_path, config, pipeline)
+        #render_dir = render_loop(self.model_path, config, pipeline)
         CONSOLE.log("[bold][green]:tada: Render Complete :tada:[/bold]")
 
         # get masks from rendered images
-        mp = MaskProcessor(render_dir, "car")
+        #mp = MaskProcessor(render_dir, "ground")
         #mp = MaskProcessor(Path("renders/IMG_4718/"), "car")
-        mp.run_mask_processing()
+        #mp.run_mask_processing()
 
         # Phase 2 - run gCull
         keep = cull_loop(config, pipeline)
         pipeline.model = modify_model(pipeline.model, keep)
         CONSOLE.log(f"Total culled: {(statcull_total-keep.sum().item())}/{statcull_total} ➜ New Total = {pipeline.model.means.shape[0]}, writing to ply...")
+
+        # Phase 3 - find ground
+        CONSOLE.log("Running RANSAC")
+        ground_gaussians = get_ground_gaussians(pipeline.model)
+        keep = ground_gaussians
+        pipeline.model = modify_model(pipeline.model, keep)
+        CONSOLE.log(f"New Total = {pipeline.model.means.shape[0]}, writing to ply...")
 
         # write modified model to file
         filename = write_ply(self.model_path, pipeline.model)

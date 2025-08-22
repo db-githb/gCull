@@ -47,7 +47,7 @@ def get_viewmat(camera):
     return viewmat
 
 # taken from gaussian-opacity-fields
-def get_full_proj_transform(tanHalfFovX, tanHalfFovY, viewMat):
+def get_full_proj_transform(tanHalfFovX, tanHalfFovY):
     zfar = 100.0
     znear = 0.01
     z_sign = 1.0
@@ -82,7 +82,7 @@ def get_cull_list(model, camera, bool_mask):
     N = means3D.shape[0]
     X_h = torch.cat([means3D, torch.ones(N, 1, device=device, dtype=dtype)], dim=1)  # (N,4) homogenous coordinates
     
-    projmatrix= get_full_proj_transform(tanHalfFovX, tanHalfFovY, viewmat)
+    projmatrix= get_full_proj_transform(tanHalfFovX, tanHalfFovY)
     FULL = projmatrix @ viewmat
     clip = (FULL @ X_h.t()).t()  
     w = clip[:, 3]
@@ -193,3 +193,62 @@ def visualize_mask_and_points(u_i, v_i, bool_mask):
     plt.ylabel("v (height)")
     plt.show()
     return
+
+def get_ground_gaussians(model, plane_eps=0.02, n_ransac=1024):  # plane_eps = distance threshold for ground plane (m)
+    
+    # ---------- World points ----------
+    P_world = model.means                                        # (N,3)
+    dev, dt = P_world.device, P_world.dtype
+    N = P_world.shape[0]
+    
+    # ---------- Ground plane (RANSAC) ----------
+    # Optional: world 'up' hint if you have it (e.g., torch.tensor([0,1,0], device=dev))
+    up_hint = torch.tensor([0,0,1], device=dev, dtype=dt) #None
+    n, d = fit_plane_ransac(P_world, n_iters=n_ransac, eps=plane_eps, up_hint=up_hint)
+
+    if n is not None:
+        dist = torch.abs(P_world @ n + d)                        # (N,)
+        is_ground = dist <= plane_eps
+    else:
+        # fall back: no plane found -> don't remove by plane
+        is_ground = torch.zeros(N, dtype=torch.bool, device=dev)
+    
+    return is_ground
+
+@torch.no_grad()
+def fit_plane_ransac(points, n_iters=1024, eps=0.02, up_hint=None, up_align=0.7):
+    """
+    points: (N,3) world coords
+    Returns (n, d): unit normal and offset so that plane is {x | n·x + d = 0}
+    eps: inlier distance (meters)
+    up_hint: optional world 'up' vector to prefer a horizontal plane
+    """
+    device = points.device
+    N = points.shape[0]
+    best_inliers = -1
+    best_n = None
+    best_d = None
+
+    for _ in range(n_iters):
+        idx = torch.randint(0, N, (3,), device=device)
+        p1, p2, p3 = points[idx]             # (3,3)
+        v1, v2 = p2 - p1, p3 - p1
+        n = torch.linalg.cross(v1, v2)
+        norm = torch.linalg.norm(n) + 1e-12
+        if norm < 1e-8:
+            continue
+        n = n / norm
+        # make normal point roughly upward if we have a hint
+        if up_hint is not None:
+            if torch.dot(n, up_hint) < 0:
+                n = -n
+            if torch.abs(torch.dot(n, up_hint)) < up_align:
+                continue
+        d = -torch.dot(n, p1)
+        dist = torch.abs(points @ n + d)
+        inliers = (dist <= eps).sum().item()
+        if inliers > best_inliers:
+            best_inliers = inliers
+            best_n, best_d = n, d
+
+    return best_n, best_d
