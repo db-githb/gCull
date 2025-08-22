@@ -26,8 +26,17 @@ import torch
 from jaxtyping import Float
 from torch import Tensor
 
+from gCullPY.utils.scene_box import SceneBox
 from gCullPY.cameras.cameras import Cameras
 
+# cannot use mutable types directly within dataclass; abstracting default factory calls
+def to_immutable_dict(d: Dict[str, Any]):
+    """Method to convert mutable dict to default factory dict
+
+    Args:
+        d: dictionary to convert into default factory dict for dataclass
+    """
+    return field(default_factory=lambda: dict(d))
 
 @dataclass
 class Semantics:
@@ -53,7 +62,11 @@ class DataparserOutputs:
     """Camera object storing collection of camera information in dataset."""
     alpha_color: Optional[Float[Tensor, "3"]] = None
     """Color of dataset background."""
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    scene_box: SceneBox = field(default_factory=lambda: SceneBox(aabb=torch.tensor([[-1, -1, -1], [1, 1, 1]])))
+    """Scene box of dataset. Used to bound the scene or provide the scene scale depending on model."""
+    mask_filenames: Optional[List[Path]] = None
+    """Filenames for any masks that are required"""
+    metadata: Dict[str, Any] = to_immutable_dict({})
     """Dictionary of any metadata that be required for the given experiment.
     Will be processed by the InputDataset to create any additional tensors that may be required.
     """

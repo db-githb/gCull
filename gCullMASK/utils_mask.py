@@ -41,7 +41,7 @@ def get_masks(image_pil, boxes, predictor):
 
   if boxes.size == 0: # catch no predictions for prompt
     h, w = arr.shape[:2]
-    best_mask = np.ones((h, w), dtype=bool)
+    best_mask = np.zeros((h, w), dtype=bool)
 
   for box in boxes:
       masks, scores, _ = predictor.predict(box=box, multimask_output=True)
@@ -62,8 +62,11 @@ def disp_mask(image_rgb, binary_mask):
     plt.show()
 
 def process_images(data_dir):
+  from pathlib import Path
   root = data_dir #"/content/drive/My Drive/discord_car/"
-  image_dir, downscale_factor = get_downscale_dir(root)
+  #image_dir, downscale_factor = get_downscale_dir(root)
+  image_dir = Path("renders/IMG_4718/")
+  downscale_factor = 1
   image_paths = sorted([
       os.path.join(image_dir, f)
       for f in os.listdir(image_dir)

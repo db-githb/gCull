@@ -31,28 +31,7 @@ conda install ffmpeg -c conda-forge
 pip install .
 ```
 
-#### ⚠️ Torch + CUDA Compatibility
-Installing SAM2 and CLIP will automatically install a CUDA-enabled version of PyTorch, typically built for the latest supported CUDA version.
-However, you should still ensure compatibility with your local CUDA drivers.
-You can check your CUDA version with:
-
-```nvcc --version```
-
-Recommended combinations:
-
-- ✅ PyTorch 2.6.0 with CUDA 11.8
-
-- ✅ PyTorch 2.7.1 with CUDA 12.9
-
-To install the correct version, refer to: https://pytorch.org/get-started/locally/
-
-### 3. Install CUDA Backend
-```bash
-cd gCullCUDA
-pip install . 
-```
-
-### 4. Download SAM2 weights for semantic masks
+### 3. Download SAM2 weights for semantic masks
 ```bash
 cd ..  # Return to project root
 mkdir -p models

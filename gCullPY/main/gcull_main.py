@@ -27,7 +27,7 @@ from typing import Optional
 from gCullPY.pipelines.base_pipeline import VanillaPipelineConfig
 
 from gCullPY.main.utils_main import write_ply, load_config, render_loop
-from gCullPY.main.utils_cull import statcull, modify_model, cull_loop
+from gCullPY.main.utils_cull import statcull, modify_model, cull_loop, visualize_mask_and_points
 from gCullMASK.mask_main import MaskProcessor
 from gCullUTILS.rich_utils import CONSOLE, TABLE
 from rich.panel import Panel
@@ -56,7 +56,7 @@ class DatasetCull(BaseCull):
             self.model_path,
             test_mode="inference",
         )
-
+        config.datamanager.dataparser.downscale_factor = 1
         # Phase 1 - run statCull
         starting_total = pipeline.model.means.shape[0]
         cull_mask = statcull(pipeline)
@@ -67,25 +67,24 @@ class DatasetCull(BaseCull):
        
 
         # render images from modified model
-        #CONSOLE.print("[bold][yellow]Rendering frames for mask extraction...[/bold]")
-        #render_dir = render_loop(self.model_path, config, pipeline)
-        #CONSOLE.log("[bold][green]:tada: Render Complete :tada:[/bold]")
+        CONSOLE.print("[bold][yellow]Rendering frames for mask extraction...[/bold]")
+        render_dir = render_loop(self.model_path, config, pipeline)
+        CONSOLE.log("[bold][green]:tada: Render Complete :tada:[/bold]")
 
         # get masks from rendered images
-        #mp = MaskProcessor(render_dir, "car")
-        #mp.run_mask_processing()
+        mp = MaskProcessor(render_dir, "car")
+        #mp = MaskProcessor(Path("renders/IMG_4718/"), "car")
+        mp.run_mask_processing()
 
         # Phase 2 - run gCull
-        rgb = cull_loop(config, pipeline)
-        print("done")
-        #keep = cull_lst == 0
-        #pipeline.model = modify_model(pipeline.model, keep)
-        #CONSOLE.log(f"Total culled: {cull_lst.sum().item()}/{statcull_total} ➜ New Total = {pipeline.model.means.shape[0]}, writing to ply...")
+        keep = cull_loop(config, pipeline)
+        pipeline.model = modify_model(pipeline.model, keep)
+        CONSOLE.log(f"Total culled: {(statcull_total-keep.sum().item())}/{statcull_total} ➜ New Total = {pipeline.model.means.shape[0]}, writing to ply...")
 
         # write modified model to file
-        #filename = write_ply(self.model_path, pipeline.model)
-        #path = Path(filename)
-        #dir = config.datamanager.data.parents[1] / path.parent
-        #linked_name = f"[link=file://{dir}/]{path.name}[/link]"
-        #TABLE.add_row(f"Final 3DGS model", linked_name)
-        #CONSOLE.log(Panel(TABLE, title="[bold green]🎉 Cull Complete![/bold green] 🎉", expand=False))
+        filename = write_ply(self.model_path, pipeline.model)
+        path = Path(filename)
+        dir = config.datamanager.data.parents[1] / path.parent
+        linked_name = f"[link=file://{dir}/]{path.name}[/link]"
+        TABLE.add_row(f"Final 3DGS model", linked_name)
+        CONSOLE.log(Panel(TABLE, title="[bold green]🎉 Cull Complete![/bold green] 🎉", expand=False))

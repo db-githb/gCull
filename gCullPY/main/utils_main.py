@@ -14,6 +14,7 @@ from gCullPY.pipelines.base_pipeline import VanillaPipelineConfig
 from gCullPY.data.datamanagers.full_images_datamanager import FullImageDatamanagerConfig
 from gCullPY.models.splatfacto import SplatfactoModelConfig
 from gCullPY.data.dataparsers.colmap_dataparser import ColmapDataParserConfig
+from gCullPY.data.dataparsers.nerfstudio_dataparser import NerfstudioDataParserConfig
 from gCullPY.data.datasets.base_dataset import InputDataset
 from gCullPY.data.utils.dataloaders import FixedIndicesEvalDataloader
 import sys, os
@@ -136,15 +137,17 @@ def load_config(
         # e.g. "data/discord_car" → Path("data/discord_car")
         dm_root = Path(dm_data)
     
-    colmap_parser = ColmapDataParserConfig(
-        colmap_path=(dm_root / "colmap" / "sparse" / "0").resolve(),
-        images_path=(dm_root / "images").resolve(),
-        load_3D_points=True,
-        assume_colmap_world_coordinate_convention=True,
-        auto_scale_poses=True,
-        center_method="poses",
-        downscale_factor=data["pipeline"]["datamanager"]["dataparser"]["downscale_factor"]
-    )
+    #colmap_parser = NerfstudioDataParserConfig(
+    #    colmap_path=(dm_root / "colmap" / "sparse" / "0").resolve(),
+    #    images_path=(dm_root / "images").resolve(),
+    #    load_3D_points=True,
+    #    assume_colmap_world_coordinate_convention=True,
+    #    auto_scale_poses=True,
+    #    center_method="poses",
+    #    downscale_factor=data["pipeline"]["datamanager"]["dataparser"]["downscale_factor"]
+    #)
+
+    colmap_parser = NerfstudioDataParserConfig(data=dm_data)
 
     # Build datamanager config
     dm_conf = FullImageDatamanagerConfig(
