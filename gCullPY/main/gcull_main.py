@@ -84,7 +84,7 @@ class DatasetCull(BaseCull):
         # Phase 3 - find ground
         CONSOLE.log("Running RANSAC")
         ground_gaussians = get_ground_gaussians(pipeline.model)
-        keep = ground_gaussians
+        keep = ~ground_gaussians
         pipeline.model = modify_model(pipeline.model, keep)
         CONSOLE.log(f"New Total = {pipeline.model.means.shape[0]}, writing to ply...")
 
