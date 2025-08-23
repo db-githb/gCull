@@ -27,7 +27,16 @@ from typing import Optional
 from gCullPY.pipelines.base_pipeline import VanillaPipelineConfig
 
 from gCullPY.main.utils_main import write_ply, load_config, render_loop
-from gCullPY.main.utils_cull import statcull, modify_model, cull_loop, visualize_mask_and_points, find_ground_plane
+from gCullPY.main.utils_cull import (
+    statcull, 
+    modify_model,
+    cull_loop, 
+    visualize_mask_and_points,
+    find_ground_plane,
+    get_ground_gaussians, 
+    densify_ground_plane_jitter, 
+    append_gaussians_to_model
+)
 from gCullMASK.mask_main import MaskProcessor
 from gCullUTILS.rich_utils import CONSOLE, TABLE
 from rich.panel import Panel
@@ -79,16 +88,26 @@ class DatasetCull(BaseCull):
         # Phase 2 - run gCull
         keep = cull_loop(config, pipeline)
         pipeline.model = modify_model(pipeline.model, keep)
-        CONSOLE.log(f"Total culled: {(statcull_total-keep.sum().item())}/{statcull_total} ➜ New Total = {pipeline.model.means.shape[0]}, writing to ply...")
+        gCull_total = pipeline.model.means.shape[0]
+        CONSOLE.log(f"Total culled: {(statcull_total-keep.sum().item())}/{statcull_total} ➜ New Total = {gCull_total}")
 
         # Phase 3 - find ground
-        CONSOLE.log("Running RANSAC")
-        keep = find_ground_plane(pipeline.model)
-        #keep = ~ground_gaussians
+        CONSOLE.log(f":running: Running RANSAC and finding ground plane...")
+        keep, is_ground, norm, offset = find_ground_plane(pipeline.model)
+        ground_gaussians = get_ground_gaussians(pipeline.model, is_ground)
+        CONSOLE.log(f"Culling noisy ground gaussians")
         pipeline.model = modify_model(pipeline.model, keep)
-        CONSOLE.log(f"New Total = {pipeline.model.means.shape[0]}, writing to ply...")
+        CONSOLE.log(f"Total culled: {(gCull_total-keep.sum().item())}/{gCull_total} ➜ New Total = {pipeline.model.means.shape[0]}")
+
+        # Phase 4 - expand ground
+        CONSOLE.log(f"Expanding ground")
+        new_gaussians = densify_ground_plane_jitter(ground_gaussians, norm, offset)
+        pipeline.model = append_gaussians_to_model(pipeline.model, new_gaussians)
+        CONSOLE.log(f"New Total = {pipeline.model.means.shape[0]}")
+
 
         # write modified model to file
+        CONSOLE.log(f"Writing to ply...")
         filename = write_ply(self.model_path, pipeline.model)
         path = Path(filename)
         dir = config.datamanager.data.parents[1] / path.parent

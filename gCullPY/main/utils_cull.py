@@ -114,6 +114,16 @@ def get_mask(batch, mask_dir):
     #show_mask(bool_mask)
     return binary_mask
 
+def get_ground_gaussians(model, is_ground):
+    ground_gaussians = {}
+    ground_gaussians["means"] = model.means[is_ground]
+    ground_gaussians["opacities"] = model.opacities[is_ground]
+    ground_gaussians["scales"] = model.scales[is_ground]
+    ground_gaussians["quats"] = model.quats[is_ground]
+    ground_gaussians["features_dc"] = model.features_dc[is_ground]
+    ground_gaussians["features_rest"] = model.features_rest[is_ground]
+    return ground_gaussians
+
 def modify_model(og_model, keep):
     model = og_model
     with torch.no_grad():
@@ -123,6 +133,17 @@ def modify_model(og_model, keep):
         og_model.quats.data = model.quats[keep].clone()
         og_model.features_dc.data = model.features_dc[keep].clone()
         og_model.features_rest.data = model.features_rest[keep].clone()
+    return og_model
+
+def append_gaussians_to_model(og_model, new_gaussians):
+    model = og_model
+    with torch.no_grad():
+        og_model.means.data = torch.cat((model.means.data, new_gaussians["means"]))
+        og_model.opacities.data = torch.cat((model.opacities.data, new_gaussians["opacities"]))
+        og_model.scales.data = torch.cat((model.scales.data, new_gaussians["scales"]))
+        og_model.quats.data = torch.cat((model.quats.data, new_gaussians["quats"]))
+        og_model.features_dc.data = torch.cat((model.features_dc.data, new_gaussians["features_dc"]))
+        og_model.features_rest.data = torch.cat((model.features_rest.data, new_gaussians["features_rest"]))
     return og_model
 
 def get_mask_dir(config):
@@ -207,18 +228,19 @@ def find_ground_plane(model, plane_eps=0.02, n_ransac=1024):  # plane_eps = thic
     n, d = fit_plane_ransac(P_world, n_iters=n_ransac, eps=plane_eps, up_hint=up_hint)
 
     if n is not None:
-        #dist = torch.abs(P_world @ n + d)                        # (N,)
-        #is_ground = dist <= plane_eps
+        dist = torch.abs(P_world @ n + d)                        # (N,)
+        is_ground = dist <= plane_eps
         signed = P_world @ n + d # signed distance (upward positive)
         # delete anything strictly below the plane (optionally with a margin in meters)
         margin = 0.01                      # e.g., 0.01 to keep a 1 cm buffer above the plane
         below = signed < -margin          # True = below plane
-        is_ground = ~below
+        keep = ~below
     else:
         # fall back: no plane found -> don't remove by plane
+        keep = torch.ones(N, dtype=torch.bool, device=dev)
         is_ground = torch.zeros(N, dtype=torch.bool, device=dev)
     
-    return is_ground
+    return keep, is_ground, n, d
 
 @torch.no_grad()
 def fit_plane_ransac(points, n_iters=1024, eps=0.02, up_hint=None, up_align=0.7):
@@ -257,3 +279,75 @@ def fit_plane_ransac(points, n_iters=1024, eps=0.02, up_hint=None, up_align=0.7)
             best_n, best_d = n, d
 
     return best_n, best_d
+
+@torch.no_grad()
+def densify_ground_plane_jitter(ground_gaussians, n, d,
+                                samples_per_point=2,
+                                spacing_percentile=0.5,
+                                expand_scale=1.2,       # >1 grows outward more
+                                normal_jitter=0.0,      # e.g. 0.003 (meters)
+                                subsample_cap=20000):
+    """
+    points        : (N,3) world coords (float, CUDA ok)
+    is_ground     : (N,) bool mask (True = ground)
+    n, d          : plane {x | n·x + d = 0}, with ||n||=1
+    Returns:
+        new_pts   : (M,3) sampled points on/near the plane
+    """
+    Pg = ground_gaussians["means"]
+    dev, dt = Pg.device, Pg.dtype              
+    if Pg.numel() == 0:
+        return torch.empty(0, 3, device=dev, dtype=dt)
+
+    # --- plane basis (u, v) ---
+    # pick a non-parallel vector to n
+    a = torch.tensor([1., 0., 0.], device=dev, dtype=dt)
+    if torch.abs((a @ n).abs() - 1.0) < 1e-6:
+        a = torch.tensor([0., 1., 0.], device=dev, dtype=dt)
+    u = torch.linalg.cross(n, a); u = u / (u.norm() + 1e-12)
+    v = torch.linalg.cross(n, u)
+
+    # --- estimate typical spacing r0 (median N.N. distance on a subsample) ---
+    G = Pg.shape[0]
+    if G > subsample_cap:
+        idx = torch.randperm(G, device=dev)[:subsample_cap]
+        Q = Pg[idx]
+    else:
+        Q = Pg
+    # pairwise distance to get nearest neighbor (~O(S^2); OK for capped S)
+    with torch.amp.autocast('cuda', enabled=False):
+        D = torch.cdist(Q, Q, p=2)
+    D[D == 0] = float('inf')
+    nn = D.min(dim=1).values
+    r0 = torch.quantile(nn, spacing_percentile, interpolation='nearest')  # e.g., median
+    r_max = expand_scale * r0
+
+    # --- sample K points per ground mean, uniform in disk radius r∈[0,r_max] ---
+    G = Pg.shape[0]
+    K = samples_per_point
+    if K <= 0:
+        return torch.empty(0, 3, device=dev, dtype=dt)
+    # polar sampling: radius ~ sqrt(U) for uniform disk, theta ~ U[0, 2π)
+    U = torch.rand(G, K, device=dev, dtype=dt)
+    R = r_max * torch.sqrt(U)
+    TH = 2.0 * torch.pi * torch.rand(G, K, device=dev, dtype=dt)
+    # offsets in plane: r*cosθ u + r*sinθ v
+    off = (R * torch.cos(TH)).unsqueeze(-1) * u + (R * torch.sin(TH)).unsqueeze(-1) * v  # (G,K,3)
+
+    if normal_jitter > 0:
+        off = off + normal_jitter * torch.randn_like(off) * n
+
+    new_pts = (Pg.unsqueeze(1) + off).reshape(-1, 3)
+
+    # Prepare output dict
+    out = {k: v for k, v in ground_gaussians.items()}
+
+    # Append means
+    out["means"] = new_pts
+    out["features_dc"] = ground_gaussians["features_dc"].repeat_interleave(K, dim=0)
+    out["features_rest"] = ground_gaussians["features_rest"].repeat_interleave(K, dim=0)
+    out["opacities"] = ground_gaussians["opacities"].repeat_interleave(K, dim=0)
+    out["quats"] = ground_gaussians["quats"].repeat_interleave(K, dim=0)
+    out["scales"] = ground_gaussians["scales"].repeat_interleave(K, dim=0)
+
+    return out
