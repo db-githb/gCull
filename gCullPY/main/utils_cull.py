@@ -194,7 +194,7 @@ def visualize_mask_and_points(u_i, v_i, bool_mask):
     plt.show()
     return
 
-def get_ground_gaussians(model, plane_eps=0.02, n_ransac=1024):  # plane_eps = distance threshold for ground plane (m)
+def find_ground_plane(model, plane_eps=0.02, n_ransac=1024):  # plane_eps = thickness threshold for ground plane (m)
     
     # ---------- World points ----------
     P_world = model.means                                        # (N,3)
@@ -207,8 +207,13 @@ def get_ground_gaussians(model, plane_eps=0.02, n_ransac=1024):  # plane_eps = d
     n, d = fit_plane_ransac(P_world, n_iters=n_ransac, eps=plane_eps, up_hint=up_hint)
 
     if n is not None:
-        dist = torch.abs(P_world @ n + d)                        # (N,)
-        is_ground = dist <= plane_eps
+        #dist = torch.abs(P_world @ n + d)                        # (N,)
+        #is_ground = dist <= plane_eps
+        signed = P_world @ n + d # signed distance (upward positive)
+        # delete anything strictly below the plane (optionally with a margin in meters)
+        margin = 0.01                      # e.g., 0.01 to keep a 1 cm buffer above the plane
+        below = signed < -margin          # True = below plane
+        is_ground = ~below
     else:
         # fall back: no plane found -> don't remove by plane
         is_ground = torch.zeros(N, dtype=torch.bool, device=dev)

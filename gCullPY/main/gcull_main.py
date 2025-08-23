@@ -27,7 +27,7 @@ from typing import Optional
 from gCullPY.pipelines.base_pipeline import VanillaPipelineConfig
 
 from gCullPY.main.utils_main import write_ply, load_config, render_loop
-from gCullPY.main.utils_cull import statcull, modify_model, cull_loop, visualize_mask_and_points, get_ground_gaussians
+from gCullPY.main.utils_cull import statcull, modify_model, cull_loop, visualize_mask_and_points, find_ground_plane
 from gCullMASK.mask_main import MaskProcessor
 from gCullUTILS.rich_utils import CONSOLE, TABLE
 from rich.panel import Panel
@@ -83,8 +83,8 @@ class DatasetCull(BaseCull):
 
         # Phase 3 - find ground
         CONSOLE.log("Running RANSAC")
-        ground_gaussians = get_ground_gaussians(pipeline.model)
-        keep = ~ground_gaussians
+        keep = find_ground_plane(pipeline.model)
+        #keep = ~ground_gaussians
         pipeline.model = modify_model(pipeline.model, keep)
         CONSOLE.log(f"New Total = {pipeline.model.means.shape[0]}, writing to ply...")
 
