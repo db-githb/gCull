@@ -35,11 +35,15 @@ from gCullPY.main.utils_cull import (
     find_ground_plane,
     get_ground_gaussians, 
     densify_ground_plane_jitter, 
-    append_gaussians_to_model
+    append_gaussians_to_model,
+    get_all_ground_gaussians,
+    fill_hole_with_known_plane,
+    assign_attrs_for_new_gaussians
 )
 from gCullMASK.mask_main import MaskProcessor
 from gCullUTILS.rich_utils import CONSOLE, TABLE
 from rich.panel import Panel
+from threading import Thread
 
 @dataclass
 class BaseCull:
@@ -105,6 +109,15 @@ class DatasetCull(BaseCull):
         pipeline.model = append_gaussians_to_model(pipeline.model, new_gaussians)
         CONSOLE.log(f"New Total = {pipeline.model.means.shape[0]}")
 
+        complete_ground_gaussians = get_all_ground_gaussians(ground_gaussians, new_gaussians)
+        new_pts = fill_hole_with_known_plane(complete_ground_gaussians["means"].cpu(), norm.cpu(), offset.cpu(), keep_ratio=.1) # points to fill hole
+        timbit =  assign_attrs_for_new_gaussians(complete_ground_gaussians, new_pts)
+        timbit_dense = densify_ground_plane_jitter(timbit, norm, offset, samples_per_point=40, expand_scale=1.8)
+        complete_ground_tile = get_all_ground_gaussians(ground_gaussians, timbit_dense)
+        length = complete_ground_tile["means"][:,1].max() - complete_ground_tile["means"][:,1].min()
+        complete_ground_tile["means"][:,1] += length
+        pipeline.model = append_gaussians_to_model(pipeline.model, complete_ground_tile)
+        CONSOLE.log(f"New Total = {pipeline.model.means.shape[0]}")
 
         # write modified model to file
         CONSOLE.log(f"Writing to ply...")

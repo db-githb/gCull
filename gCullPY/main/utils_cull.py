@@ -1,11 +1,56 @@
 import torch
 import numpy as np
+from scipy.spatial import KDTree
+from scipy.ndimage import binary_fill_holes
+
 import matplotlib.pyplot as plt
 from PIL import Image
 from pathlib import Path
 from gCullPY.main.utils_main import build_loader
 from gCullUTILS.rich_utils import get_progress
 
+ # ---- small utilities ----
+def gather_rows(mat, idx):  # mat: (N, C...), idx: (M,) or (M,k)
+    # returns (M, C...) or (M,k,C...)
+    if idx.ndim == 1:
+        return mat[idx]
+    # idx is (M,k)
+    flat = mat[idx.reshape(-1)]
+    return flat.view(idx.shape + mat.shape[1:])
+
+def weighted_mean(nei_vals, w):  # nei_vals: (M,k,...) ; w: (M,k)
+    while w.ndim < nei_vals.ndim:
+        w = w.unsqueeze(-1)
+    return (w * nei_vals).sum(dim=1)
+
+def quat_to_mat(q):
+            # q assumed (w,x,y,z) or (x,y,z,w)? If your repo uses (x,y,z,w), swap below accordingly.
+            # Here we assume (w,x,y,z). Adjust if needed.
+            w,x,y,z = q.unbind(-1)
+            xx,yy,zz = x*x, y*y, z*z
+            wx,wy,wz = w*x, w*y, w*z
+            xy,xz,yz = x*y, x*z, y*z
+            R = torch.stack([
+                1-2*(yy+zz), 2*(xy-wz),   2*(xz+wy),
+                2*(xy+wz),   1-2*(xx+zz), 2*(yz-wx),
+                2*(xz-wy),   2*(yz+wx),   1-2*(xx+yy)
+            ], dim=-1).reshape(-1,3,3)
+            return R
+
+def mat_to_quat(R):
+    # Returns (w,x,y,z). Many repos expect this; swap if yours is xyzw.
+    m00,m01,m02 = R[:,0,0], R[:,0,1], R[:,0,2]
+    m10,m11,m12 = R[:,1,0], R[:,1,1], R[:,1,2]
+    m20,m21,m22 = R[:,2,0], R[:,2,1], R[:,2,2]
+    t = 1 + m00 + m11 + m22
+    w = torch.sqrt(torch.clamp(t, 1e-12)) / 2
+    x = (m21 - m12) / (4*w + 1e-12)
+    y = (m02 - m20) / (4*w + 1e-12)
+    z = (m10 - m01) / (4*w + 1e-12)
+    q = torch.stack([w,x,y,z], dim=-1)
+    q = q / (q.norm(dim=-1, keepdim=True) + 1e-12)
+    return q
+ # ---- -------------- ----
 
 def get_tanHalfFov(camera):
      # calculate the FOV of the camera given fx and fy, width and height
@@ -125,26 +170,35 @@ def get_ground_gaussians(model, is_ground):
     return ground_gaussians
 
 def modify_model(og_model, keep):
-    model = og_model
     with torch.no_grad():
-        og_model.means.data = model.means[keep].clone()
-        og_model.opacities.data = model.opacities[keep].clone()
-        og_model.scales.data = model.scales[keep].clone()
-        og_model.quats.data = model.quats[keep].clone()
-        og_model.features_dc.data = model.features_dc[keep].clone()
-        og_model.features_rest.data = model.features_rest[keep].clone()
+        og_model.means.data = og_model.means[keep].clone()
+        og_model.opacities.data = og_model.opacities[keep].clone()
+        og_model.scales.data = og_model.scales[keep].clone()
+        og_model.quats.data = og_model.quats[keep].clone()
+        og_model.features_dc.data = og_model.features_dc[keep].clone()
+        og_model.features_rest.data = og_model.features_rest[keep].clone()
     return og_model
 
 def append_gaussians_to_model(og_model, new_gaussians):
-    model = og_model
     with torch.no_grad():
-        og_model.means.data = torch.cat((model.means.data, new_gaussians["means"]))
-        og_model.opacities.data = torch.cat((model.opacities.data, new_gaussians["opacities"]))
-        og_model.scales.data = torch.cat((model.scales.data, new_gaussians["scales"]))
-        og_model.quats.data = torch.cat((model.quats.data, new_gaussians["quats"]))
-        og_model.features_dc.data = torch.cat((model.features_dc.data, new_gaussians["features_dc"]))
-        og_model.features_rest.data = torch.cat((model.features_rest.data, new_gaussians["features_rest"]))
+        og_model.means.data = torch.cat((og_model.means.data, new_gaussians["means"]))
+        og_model.opacities.data = torch.cat((og_model.opacities.data, new_gaussians["opacities"]))
+        og_model.scales.data = torch.cat((og_model.scales.data, new_gaussians["scales"]))
+        og_model.quats.data = torch.cat((og_model.quats.data, new_gaussians["quats"]))
+        og_model.features_dc.data = torch.cat((og_model.features_dc.data, new_gaussians["features_dc"]))
+        og_model.features_rest.data = torch.cat((og_model.features_rest.data, new_gaussians["features_rest"]))
     return og_model
+
+def get_all_ground_gaussians(og_ground, new_ground):
+    with torch.no_grad():
+        og_ground["means"] = torch.cat((og_ground["means"], new_ground["means"]))
+        og_ground["opacities"] = torch.cat((og_ground["opacities"], new_ground["opacities"]))
+        og_ground["scales"] = torch.cat((og_ground["scales"], new_ground["scales"]))
+        og_ground["quats"] = torch.cat((og_ground["quats"], new_ground["quats"]))
+        og_ground["features_dc"] = torch.cat((og_ground["features_dc"], new_ground["features_dc"]))
+        og_ground["features_rest"] = torch.cat((og_ground["features_rest"], new_ground["features_rest"]))
+    return og_ground
+    
 
 def get_mask_dir(config):
     root = config.datamanager.data
@@ -351,3 +405,126 @@ def densify_ground_plane_jitter(ground_gaussians, n, d,
     out["scales"] = ground_gaussians["scales"].repeat_interleave(K, dim=0)
 
     return out
+
+@torch.no_grad()
+def fill_hole_with_known_plane(points_xyz,
+                               plane_n,
+                               plane_d=None,
+                               plane_point=None,
+                               keep_ratio=1.0,
+                               k_nn=100,
+                               seed=0):
+    """
+    points_xyz: (N,3) np.array of points on (or near) the plane, with a hole
+    plane_n:    (3,) plane normal (unit or not; will be normalized)
+    plane_d:    scalar d for plane n·x + d = 0  (optional if plane_point given)
+    plane_point:(3,) a known point on the plane (optional if plane_d given)
+    keep_ratio: 1.0 ~ match original density; <1.0 = denser, >1.0 = sparser
+    k_nn:       k for local spacing estimate (use 6–8)
+    returns:
+      filled_pts: (N+M,3) original + newly filled points
+      new_pts:    (M,3) just the added points
+    """
+    P = np.asarray(points_xyz, float)
+    n = np.asarray(plane_n, float)
+    n = n / (np.linalg.norm(n) + 1e-12)
+
+    if plane_point is None:
+        if plane_d is None:
+            raise ValueError("Provide either plane_d or plane_point.")
+        plane_d = np.asarray(plane_d, float)
+        p0 = -plane_d * n  # a point on the plane
+    else:
+        p0 = np.asarray(plane_point, float)
+
+    # Orthonormal basis (u, v) spanning the plane
+    a = np.array([1.0, 0.0, 0.0])
+    if abs(np.dot(a, n)) > 0.9:
+        a = np.array([0.0, 1.0, 0.0])
+    u = np.cross(n, a); u /= (np.linalg.norm(u) + 1e-12)
+    v = np.cross(n, u)  # already unit
+
+    # 1) Project points to 2D coords on the plane (origin p0)
+    X = P - p0
+    XY = np.stack([X @ u, X @ v], axis=1)  # (N,2)
+
+    # 2) Estimate typical spacing from k-NN
+    kdt = KDTree(XY)
+    dists, _ = kdt.query(XY, k=k_nn+1)     # includes self at index 0
+    spacing = np.median(dists[:, -1])
+    target_r = 0.9 * keep_ratio * spacing  # Poisson-disk radius
+
+    # 3) Rasterize occupancy and find interior “hole” cells
+    pad = 3 * spacing
+    minxy = XY.min(axis=0) - pad
+    maxxy = XY.max(axis=0) + pad
+    cell = 0.6 * spacing                   # grid resolution
+    H = int(np.ceil((maxxy[1]-minxy[1]) / cell))
+    W = int(np.ceil((maxxy[0]-minxy[0]) / cell))
+    idx = np.floor((XY - minxy) / cell).astype(int)
+    idx[:,0] = np.clip(idx[:,0], 0, W-1)
+    idx[:,1] = np.clip(idx[:,1], 0, H-1)
+    occ = np.zeros((H, W), dtype=bool)
+    occ[idx[:,1], idx[:,0]] = True
+
+    filled = binary_fill_holes(occ)
+    hole_mask = filled & ~occ
+
+    ys, xs = np.nonzero(hole_mask)
+    if len(xs) == 0:
+        return P, np.empty((0,3))
+    centers = np.stack([xs + 0.5, ys + 0.5], axis=1) * cell + minxy  # (M,2)
+
+    # 4) Blue-noise (dart-throwing) inside the hole at ~original density
+    rng = np.random.default_rng(seed)
+    order = rng.permutation(len(centers))
+    accepted = []
+    tree = KDTree(XY)
+    for i in order:
+        p = centers[i]
+        if tree.query(p, k=1)[0] < target_r:   # too close to existing points
+            continue
+        if accepted:
+            A = np.vstack(accepted)
+            if np.min(np.linalg.norm(A - p, axis=1)) < target_r:
+                continue
+        accepted.append(p)
+
+    if not accepted:
+        return P, np.empty((0,3))
+
+    A = np.vstack(accepted)  # (M,2)
+
+    # 5) Lift new samples back to 3D on the plane
+    new_pts = p0 + A[:,0:1]*u + A[:,1:2]*v
+    return torch.from_numpy(new_pts).to(torch.float32)
+
+@torch.no_grad()
+def assign_attrs_for_new_gaussians(
+    og_attrs,
+    new_pts,                      # (M,3) float tensor, same device/dtype as model.means
+):
+    """
+    Returns a dict with tensors for new gaussians:
+      features_dc, features_rest, opacities, quats, scales
+    """
+    dev=og_attrs["means"].device
+    N = new_pts.shape[0]
+    opacities = og_attrs["opacities"].to(dev).mean()
+    scales  = og_attrs["scales"].to(dev).mean(dim=0)
+    quats  = og_attrs["quats"].to(dev).mean(dim=0)
+    features_rest = og_attrs["features_rest"].to(dev).mean(dim=0)
+    features_dc = og_attrs["features_dc"].to(dev).mean(dim=0)
+
+    return {
+        "means": new_pts.to(dev),
+        "opacities": opacities.unsqueeze(0).expand(N, -1),
+        "scales": scales.unsqueeze(0).expand(N, -1),
+        "quats": quats.unsqueeze(0).expand(N, -1),
+        "features_rest": features_rest.unsqueeze(0).expand(N, -1, -1),
+        "features_dc": features_dc.unsqueeze(0).expand(N, -1)
+    }
+
+
+
+
