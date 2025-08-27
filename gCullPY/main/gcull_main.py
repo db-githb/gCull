@@ -41,7 +41,12 @@ from gCullPY.main.utils_cull import (
     get_all_ground_gaussians,
     fill_hole_with_known_plane,
     assign_attrs_for_new_gaussians,
-    mask_by_plane_alignment
+    mask_by_plane_alignment,
+    make_eight_offset_tiles,
+    concat_tiles,
+    fill_plane_with_gaussians,
+    p0_from_inliers_centroid,
+    sample_sh_by_index
 )
 from gCullMASK.mask_main import MaskProcessor
 from gCullUTILS.rich_utils import CONSOLE, TABLE
@@ -83,9 +88,9 @@ class DatasetCull(BaseCull):
        
 
         # render images from modified model
-        CONSOLE.print("[bold][yellow]Rendering frames for mask extraction...[/bold]")
+        #CONSOLE.print("[bold][yellow]Rendering frames for mask extraction...[/bold]")
         #render_dir = render_loop(self.model_path, config, pipeline)
-        CONSOLE.log("[bold][green]:tada: Render Complete :tada:[/bold]")
+        #CONSOLE.log("[bold][green]:tada: Render Complete :tada:[/bold]")
 
         # get masks from rendered images
         #mp = MaskProcessor(render_dir, "ground")
@@ -106,25 +111,43 @@ class DatasetCull(BaseCull):
         pipeline.model = modify_model(pipeline.model, keep)
         CONSOLE.log(f"Total culled: {(gCull_total-keep.sum().item())}/{gCull_total} ➜ New Total = {pipeline.model.means.shape[0]}")
 
+        # Phase 4 - create ground
+        CONSOLE.log(f"create ground plane...")
+        p0 = p0_from_inliers_centroid(ground_gaussians["means"], norm)
+        length = ground_gaussians["means"][:,1].max() - ground_gaussians["means"][:,1].min()
+        ground_tile = fill_plane_with_gaussians(norm, p0, 100, 100, .1) #only has means, quats, scales
+        
+        N = ground_tile["means"].shape[0]
+        dev = ground_tile["means"].device
+        dt = ground_tile["quats"].dtype
+        opacity = ground_gaussians["opacities"].median()
+        ground_tile["opacities"] = torch.full((ground_tile["means"].shape[0],1), opacity.item(), device=dev, dtype=dt)
+        ground_tile["features_dc"], ground_tile["features_rest"] = sample_sh_by_index(ground_gaussians["features_dc"], ground_gaussians["features_rest"], N)
+        new_gaussians = ground_tile
+        #new_gaussians["means"][:,1] += length
+        
+        
         # Phase 4 - cull gaussians with angular deviation from ground plane
         #keep = mask_by_plane_alignment(norm, ground_gaussians, tau_deg=20.0)
         #ground_gaussians = modify_ground_gaussians(ground_gaussians, keep)
 
         # Phase 5 - expand ground
-        CONSOLE.log(f"Expanding ground")
-        new_gaussians = densify_ground_plane_jitter(ground_gaussians, norm, offset)
+        #CONSOLE.log(f"Expanding ground")
+        #new_gaussians = densify_ground_plane_jitter(ground_gaussians, norm, offset)
         pipeline.model = append_gaussians_to_model(pipeline.model, new_gaussians)
-        CONSOLE.log(f"New Total = {pipeline.model.means.shape[0]}")
+        #CONSOLE.log(f"New Total = {pipeline.model.means.shape[0]}")
 
-        complete_ground_gaussians = get_all_ground_gaussians(ground_gaussians, new_gaussians)
-        new_pts = fill_hole_with_known_plane(complete_ground_gaussians["means"].cpu(), norm.cpu(), offset.cpu(), keep_ratio=.1) # points to fill hole
-        timbit =  assign_attrs_for_new_gaussians(complete_ground_gaussians, new_pts)
-        timbit_dense = densify_ground_plane_jitter(timbit, norm, offset, samples_per_point=80, expand_scale=2)
-        complete_ground_tile = get_all_ground_gaussians(ground_gaussians, timbit_dense)
-        length = complete_ground_tile["means"][:,1].max() - complete_ground_tile["means"][:,1].min()
-        complete_ground_tile["means"][:,1] += length
-        pipeline.model = append_gaussians_to_model(pipeline.model, complete_ground_tile)
-        CONSOLE.log(f"New Total = {pipeline.model.means.shape[0]}")
+        #complete_ground_gaussians = get_all_ground_gaussians(ground_gaussians, new_gaussians)
+        #new_pts = fill_hole_with_known_plane(complete_ground_gaussians["means"].cpu(), norm.cpu(), offset.cpu(), keep_ratio=.1) # points to fill hole
+        #timbit =  assign_attrs_for_new_gaussians(complete_ground_gaussians, new_pts)
+        #timbit_dense = densify_ground_plane_jitter(timbit, norm, offset, samples_per_point=80, expand_scale=2)
+        #complete_ground_tile = get_all_ground_gaussians(ground_gaussians, timbit_dense)
+        #length = complete_ground_tile["means"][:,1].max() - complete_ground_tile["means"][:,1].min()
+        ##complete_ground_tile["means"][:,1] += length
+        #eight_tiles = make_eight_offset_tiles(complete_ground_tile, length)
+        #complete_ground_tile = concat_tiles(eight_tiles)
+        #pipeline.model = append_gaussians_to_model(pipeline.model, complete_ground_tile)
+        #CONSOLE.log(f"New Total = {pipeline.model.means.shape[0]}")
 
         # write modified model to file
         CONSOLE.log(f"Writing to ply...")

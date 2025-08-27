@@ -347,6 +347,154 @@ def fit_plane_ransac(points, n_iters=1024, eps=0.02, up_hint=None, up_align=0.7)
     return best_n, best_d
 
 @torch.no_grad()
+def fill_plane_with_gaussians(
+    n,                         # (3,) plane normal
+    p0,                        # (3,) a point on the plane (plane origin)
+    nx, ny,                    # grid size (cols, rows)
+    pitch,                     # spacing between neighbors (world units)
+    log_scales=True,           # True for 3DGS-style log-scales
+    scale_tan=(0.05, 0.05),    # in-plane radii (x/z on the plane)
+    scale_norm=0.01,           # thickness (along the normal) -> keep small so splats lie flat
+    quat_normal_axis='z',      # which local axis is aligned to plane normal: 'x'|'y'|'z'
+    roll=0.0,                  # in-plane rotation (radians)
+    jitter=0.0,                # 0..1 random jitter fraction of pitch
+    device='cuda',
+    dtype=torch.float32
+):
+    n = torch.as_tensor(n, device=device, dtype=dtype)
+    p0 = torch.as_tensor(p0, device=device, dtype=dtype)
+
+    # 1) tangent basis (u,v) and normal n̂
+    u, v, _ = basis_from_normal(n, roll=roll)
+    n_hat = normalize(n)
+
+    # 2) grid in (u,v) centered on p0
+    xs = torch.linspace(-(nx-1)/2, (nx-1)/2, steps=nx, device=device, dtype=dtype) * pitch
+    ys = torch.linspace(-(ny-1)/2, (ny-1)/2, steps=ny, device=device, dtype=dtype) * pitch
+    X, Y = torch.meshgrid(xs, ys, indexing='xy')                # (nx,ny)
+    if jitter > 0:
+        X = X + (torch.rand_like(X)-0.5) * (jitter * pitch)
+        Y = Y + (torch.rand_like(Y)-0.5) * (jitter * pitch)
+    # means on plane: p = p0 + x*u + y*v
+    means = (p0[None,None,:]
+             + X[...,None]*u[None,None,:]
+             + Y[...,None]*v[None,None,:]).reshape(-1, 3)       # (N,3), N=nx*ny
+
+    # 3) rotation: choose which local axis maps to n̂
+    if   quat_normal_axis == 'z':
+        R = torch.stack([u, v, n_hat], dim=-1)                  # (3,3)
+    elif quat_normal_axis == 'y':
+        R = torch.stack([u, n_hat, v], dim=-1)
+    elif quat_normal_axis == 'x':
+        R = torch.stack([n_hat, u, v], dim=-1)
+    else:
+        raise ValueError("quat_normal_axis must be 'x','y','z'")
+    
+    R = R.unsqueeze(0).expand(means.shape[0], -1, -1).contiguous()
+    quats = mat_to_quat(R)                                 # (N,4)
+
+    # 4) scales: two in-plane radii (larger), one small along normal axis
+    sx, sy = scale_tan
+    sn = scale_norm
+    if   quat_normal_axis == 'z': base = [sx, sy, sn]
+    elif quat_normal_axis == 'y': base = [sx, sn, sy]
+    else:                         base = [sn, sx, sy]           # 'x'
+    base = torch.tensor(base, device=device, dtype=dtype)
+    if log_scales:
+        base = torch.log(base)
+    scales = base.unsqueeze(0).expand(means.shape[0], -1).contiguous()
+
+    return {
+        "means":     means,         # (N,3)
+        "quats":     quats,         # (N,4)
+        "scales":    scales,        # (N,3) (log if log_scales=True)
+        # Fill opacities/features as you like, e.g.:
+        # "opacities": torch.full((means.shape[0],1), 0.8, device=device, dtype=dtype)
+    }
+
+def p0_from_inliers_centroid(P_inliers, n):
+    """
+    P_inliers: (M,3) inlier points from RANSAC
+    n: (3,) plane normal (need not be unit)
+    Returns p0 on the plane near the middle of the inliers.
+    Plane is assumed to be n·x = c (c estimated from inliers).
+    """
+    n_hat = normalize(n)
+    c = torch.median(P_inliers @ n_hat)           # robust plane offset along n (use mean if you prefer)
+    centroid = P_inliers.mean(dim=0)
+    # project centroid onto plane: subtract normal component difference
+    p0 = centroid - ((centroid @ n_hat) - c) * n_hat
+    return p0
+
+
+def eligible(mask_mode, clip, z):
+    if mask_mode == "all":
+        return (z.abs() <= clip).all(dim=1)                # [N]
+    elif mask_mode == "any":
+        return (z.abs() <= clip).any(dim=1)
+    elif mask_mode == "mahal":
+        return (z.pow(2).sum(dim=1).sqrt() <= clip)
+    else:
+        raise ValueError("mode must be 'all' | 'any' | 'mahal'")
+
+@torch.no_grad()
+def sample_sh_by_index(
+    template_dc,            # [N,3]
+    template_rest,          # [N,15,3]
+    M,                      # number of new Gaussians (int or scalar tensor)
+    sigma_clip=1.0,         # “within ±1σ”
+    mode="mahal",           # "all" | "any" | "mahal"
+    with_replacement=True,  # allow drawing the same index multiple times
+    relax_if_needed=True,   # widen the band if none eligible
+    generator=None          # torch.Generator for reproducibility
+):
+    assert template_dc.ndim == 2 and template_dc.shape[1] == 3
+    assert template_rest.shape[0] == template_dc.shape[0] and template_rest.shape[1:] == (15,3)
+    dev, dt = template_dc.device, template_dc.dtype
+    N = template_dc.shape[0]
+    M = int(torch.as_tensor(M).item())  # ensure plain int
+
+    # Per-coefficient stats across Gaussians
+    mu = template_dc.mean(dim=0)                                # [3]
+    sd = template_dc.std(dim=0, unbiased=False) + 1e-8          # [3]
+    z  = (template_dc - mu) / sd                                # [N,3]
+    
+    clip = float(sigma_clip)
+    mask = eligible(mode, clip, z)
+
+    # If none eligible, optionally relax
+    if relax_if_needed and mask.sum().item() == 0:
+        for grow in (1.25, 1.5, 2.0, 3.0):
+            mask = eligible(mode, clip * grow, z)
+            if mask.sum().item() > 0:
+                break
+
+    idx_pool = mask.nonzero(as_tuple=False).squeeze(1)          # [K]
+    if idx_pool.numel() == 0:
+        # final fallback: use all N (we’ll sample from them)
+        idx_pool = torch.arange(N, device=dev)
+
+    # Sample M indices from the pool
+    if with_replacement:
+        idx = idx_pool[torch.randint(idx_pool.numel(), (M,), device=dev, generator=generator)]
+    else:
+        K = idx_pool.numel()
+        if K >= M:
+            perm = torch.randperm(K, device=dev, generator=generator)
+            idx = idx_pool[perm[:M]]
+        else:
+            # repeat/shuffle to reach M unique-ish picks
+            reps = (M + K - 1) // K
+            idx = idx_pool.repeat(reps)[:M]
+            shuf = torch.randperm(M, device=dev, generator=generator)
+            idx = idx[shuf]
+
+    # Gather paired SH coefficients
+    new_dc   = template_dc.index_select(0, idx).contiguous()    # [M,3]
+    new_rest = template_rest.index_select(0, idx).contiguous()  # [M,15,3]
+    return new_dc, new_rest
+
+@torch.no_grad()
 def densify_ground_plane_jitter(ground_gaussians, n, d,
                                 samples_per_point=2,
                                 spacing_percentile=0.5,
@@ -409,7 +557,7 @@ def densify_ground_plane_jitter(ground_gaussians, n, d,
     out = {k: v for k, v in ground_gaussians.items()}
 
     # align new gaussians with ground plane
-    R = basis_from_normal(n)
+    _, _, R = basis_from_normal(n)
     #_, quats = ensure_minor_axis_is_normal(R, ground_gaussians["scales"])
     quats = mat_to_quat(R)
     N = new_pts.shape[0]
@@ -501,7 +649,7 @@ def basis_from_normal(n, roll=0.0, axis='y'):
         R = torch.stack([n, u, v], dim=1)
     else:
         raise ValueError("axis must be 'x','y','z'")
-    return R
+    return u, v, R
 
 @torch.no_grad()
 def fill_hole_with_known_plane(points_xyz,
@@ -680,5 +828,51 @@ def mask_by_plane_alignment(
     keep_mask = torch.where(not_isotropic, ok, torch.ones_like(ok, dtype=torch.bool))
     return keep_mask
 
+def make_eight_offset_tiles(tile, length, plane_axes=(0,1), clone_tensors=True):
+    """
+    tile: dict with tensors (e.g., means [N,3], quats [N,4], scales [N,3], opacities [N,1], ...)
+    length: float (offset amount)
+    plane_axes: which two axes are the ground plane (default (0,2) = X,Z if +Y is up)
+    clone_tensors: True => tensors are cloned so tiles are independent
+    returns: list of 8 dicts
+    """
+    means = tile["means"]
+    dev, dt = means.device, means.dtype
+    ax0, ax1 = plane_axes
 
+    # 8 neighbor offsets in the 2D grid: (-1, -1), (-1, 0), ..., (1, 1) without (0,0)
+    offsets2d = [(dx,dy) for dx in (-1,0,1) for dy in (-1,0,1) if not (dx==0 and dy==0)]
 
+    # build 8x3 offset vectors (zero on the normal axis)
+    off_vecs = []
+    for dx, dy in offsets2d:
+        v = torch.zeros(3, device=dev, dtype=dt)
+        v[ax0] = dx * length*.75
+        v[ax1] = dy * length
+        off_vecs.append(v)
+    off_vecs = torch.stack(off_vecs, dim=0)                  # [8,3]
+
+    # apply to means: broadcast to [8, N, 3]
+    means_tiled = means.unsqueeze(0) + off_vecs.unsqueeze(1) # [8,N,3]
+
+    tiles = []
+    for i in range(8):
+        t = {}
+        for k, v in tile.items():
+            if k == "means":
+                t["means"] = means_tiled[i].clone() if clone_tensors else means_tiled[i]
+            else:
+                # clone other tensors so edits to one tile don't affect others
+                t[k] = v.clone() if (clone_tensors and torch.is_tensor(v)) else (v
+                      if not torch.is_tensor(v) else v)
+        tiles.append(t)
+    return tiles
+
+def concat_tiles(tiles):
+    out = {}
+    for k in tiles[0]:
+        if torch.is_tensor(tiles[0][k]) and tiles[0][k].ndim >= 1:
+            out[k] = torch.cat([t[k] for t in tiles], dim=0)
+        else:
+            out[k] = tiles[0][k]  # non-tensor or scalar -> copy first
+    return out
