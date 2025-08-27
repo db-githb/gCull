@@ -23,6 +23,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+import torch
 
 from gCullPY.pipelines.base_pipeline import VanillaPipelineConfig
 
@@ -33,12 +34,14 @@ from gCullPY.main.utils_cull import (
     cull_loop, 
     visualize_mask_and_points,
     find_ground_plane,
-    get_ground_gaussians, 
+    get_ground_gaussians,
+    modify_ground_gaussians, 
     densify_ground_plane_jitter, 
     append_gaussians_to_model,
     get_all_ground_gaussians,
     fill_hole_with_known_plane,
-    assign_attrs_for_new_gaussians
+    assign_attrs_for_new_gaussians,
+    mask_by_plane_alignment
 )
 from gCullMASK.mask_main import MaskProcessor
 from gCullUTILS.rich_utils import CONSOLE, TABLE
@@ -103,7 +106,11 @@ class DatasetCull(BaseCull):
         pipeline.model = modify_model(pipeline.model, keep)
         CONSOLE.log(f"Total culled: {(gCull_total-keep.sum().item())}/{gCull_total} ➜ New Total = {pipeline.model.means.shape[0]}")
 
-        # Phase 4 - expand ground
+        # Phase 4 - cull gaussians with angular deviation from ground plane
+        #keep = mask_by_plane_alignment(norm, ground_gaussians, tau_deg=20.0)
+        #ground_gaussians = modify_ground_gaussians(ground_gaussians, keep)
+
+        # Phase 5 - expand ground
         CONSOLE.log(f"Expanding ground")
         new_gaussians = densify_ground_plane_jitter(ground_gaussians, norm, offset)
         pipeline.model = append_gaussians_to_model(pipeline.model, new_gaussians)
@@ -112,7 +119,7 @@ class DatasetCull(BaseCull):
         complete_ground_gaussians = get_all_ground_gaussians(ground_gaussians, new_gaussians)
         new_pts = fill_hole_with_known_plane(complete_ground_gaussians["means"].cpu(), norm.cpu(), offset.cpu(), keep_ratio=.1) # points to fill hole
         timbit =  assign_attrs_for_new_gaussians(complete_ground_gaussians, new_pts)
-        timbit_dense = densify_ground_plane_jitter(timbit, norm, offset, samples_per_point=40, expand_scale=1.8)
+        timbit_dense = densify_ground_plane_jitter(timbit, norm, offset, samples_per_point=80, expand_scale=2)
         complete_ground_tile = get_all_ground_gaussians(ground_gaussians, timbit_dense)
         length = complete_ground_tile["means"][:,1].max() - complete_ground_tile["means"][:,1].min()
         complete_ground_tile["means"][:,1] += length

@@ -9,7 +9,10 @@ from pathlib import Path
 from gCullPY.main.utils_main import build_loader
 from gCullUTILS.rich_utils import get_progress
 
- # ---- small utilities ----
+# ---- small utilities ----
+def normalize(v, eps=1e-12):
+    return v / (torch.linalg.norm(v, dim=-1, keepdim=True) + eps)
+
 def gather_rows(mat, idx):  # mat: (N, C...), idx: (M,) or (M,k)
     # returns (M, C...) or (M,k,C...)
     if idx.ndim == 1:
@@ -38,10 +41,10 @@ def quat_to_mat(q):
             return R
 
 def mat_to_quat(R):
-    # Returns (w,x,y,z). Many repos expect this; swap if yours is xyzw.
-    m00,m01,m02 = R[:,0,0], R[:,0,1], R[:,0,2]
-    m10,m11,m12 = R[:,1,0], R[:,1,1], R[:,1,2]
-    m20,m21,m22 = R[:,2,0], R[:,2,1], R[:,2,2]
+    # Returns (w,x,y,z) - splatfacto/nerfstudio convention
+    m00,m01,m02 = R[...,0,0], R[...,0,1], R[...,0,2]
+    m10,m11,m12 = R[...,1,0], R[...,1,1], R[...,1,2]
+    m20,m21,m22 = R[...,2,0], R[...,2,1], R[...,2,2]
     t = 1 + m00 + m11 + m22
     w = torch.sqrt(torch.clamp(t, 1e-12)) / 2
     x = (m21 - m12) / (4*w + 1e-12)
@@ -169,6 +172,15 @@ def get_ground_gaussians(model, is_ground):
     ground_gaussians["features_rest"] = model.features_rest[is_ground]
     return ground_gaussians
 
+def modify_ground_gaussians(ground_gaussians, keep):
+    ground_gaussians["means"]         = ground_gaussians["means"][keep]
+    ground_gaussians["opacities"]     = ground_gaussians["opacities"][keep]
+    ground_gaussians["scales"]        = ground_gaussians["scales"][keep]
+    ground_gaussians["quats"]         = ground_gaussians["quats"][keep]
+    ground_gaussians["features_dc"]   = ground_gaussians["features_dc"][keep]
+    ground_gaussians["features_rest"] = ground_gaussians["features_rest"][keep]
+    return ground_gaussians
+
 def modify_model(og_model, keep):
     with torch.no_grad():
         og_model.means.data = og_model.means[keep].clone()
@@ -193,7 +205,7 @@ def get_all_ground_gaussians(og_ground, new_ground):
     with torch.no_grad():
         og_ground["means"] = torch.cat((og_ground["means"], new_ground["means"]))
         og_ground["opacities"] = torch.cat((og_ground["opacities"], new_ground["opacities"]))
-        og_ground["scales"] = torch.cat((og_ground["scales"], new_ground["scales"]))
+        og_ground["scales"] = torch.cat((og_ground["scales"], new_ground["scales"])) 
         og_ground["quats"] = torch.cat((og_ground["quats"], new_ground["quats"]))
         og_ground["features_dc"] = torch.cat((og_ground["features_dc"], new_ground["features_dc"]))
         og_ground["features_rest"] = torch.cat((og_ground["features_rest"], new_ground["features_rest"]))
@@ -396,15 +408,100 @@ def densify_ground_plane_jitter(ground_gaussians, n, d,
     # Prepare output dict
     out = {k: v for k, v in ground_gaussians.items()}
 
-    # Append means
+    # align new gaussians with ground plane
+    R = basis_from_normal(n)
+    #_, quats = ensure_minor_axis_is_normal(R, ground_gaussians["scales"])
+    quats = mat_to_quat(R)
+    N = new_pts.shape[0]
+    
+    # Append attributes
     out["means"] = new_pts
     out["features_dc"] = ground_gaussians["features_dc"].repeat_interleave(K, dim=0)
     out["features_rest"] = ground_gaussians["features_rest"].repeat_interleave(K, dim=0)
     out["opacities"] = ground_gaussians["opacities"].repeat_interleave(K, dim=0)
-    out["quats"] = ground_gaussians["quats"].repeat_interleave(K, dim=0)
-    out["scales"] = ground_gaussians["scales"].repeat_interleave(K, dim=0)
+    out["quats"] = quats.unsqueeze(0).expand(N, -1).clone()
+    out["scales"] = move_minor_scale_to_axis(ground_gaussians["scales"].repeat_interleave(K,0), normal_axis=2)
 
     return out
+
+def move_minor_scale_to_axis(scales, normal_axis=2):
+    """
+    scales: (N,3)   (log or linear; this only permutes slots)
+    normal_axis: 0=x,1=y,2=z -> slot that should hold the *smallest* value
+    """
+    N = scales.shape[0]
+    min_idx = scales.argmin(dim=1)                       # (N,)
+    order = torch.arange(3, device=scales.device).expand(N,3).clone()
+    rows = (min_idx != normal_axis).nonzero(as_tuple=False).squeeze(1)
+    if rows.numel():
+        i = normal_axis
+        j = min_idx[rows]
+        tmp = order[rows, i].clone()
+        order[rows, i] = order[rows, j]
+        order[rows, j] = tmp
+    return scales.gather(1, order)
+
+def ensure_minor_axis_is_normal(R, scales, normal_axis=1):
+    assert scales.ndim == 2 and scales.shape[1] == 3
+    N = scales.shape[0]
+
+    # Broadcast a single 3x3 to all rows if needed
+    if R.ndim == 2:
+        assert R.shape == (3,3)
+        R = R.unsqueeze(0).expand(N, -1, -1).contiguous()
+    else:
+        assert R.shape == (N,3,3)
+
+    # For each row, find which local axis is currently the smallest
+    min_idx = scales.argmin(dim=1)  # (N,)
+
+    # Build per-row permutation that swaps min_idx with normal_axis when needed
+    order = torch.arange(3, device=scales.device).expand(N, 3).clone()
+    rows = (min_idx != normal_axis).nonzero(as_tuple=False).squeeze(1)
+    if rows.numel() > 0:
+        i = normal_axis
+        j = min_idx[rows]
+        tmp = order[rows, i].clone()
+        order[rows, i] = order[rows, j]
+        order[rows, j] = tmp
+
+    # Permute columns of R and entries of scales consistently
+    Rp      = R.gather(2, order.unsqueeze(1).expand(-1, 3, -1))   # (N,3,3)
+     # if you store quats, recompute them from the permuted R
+    quats_p = mat_to_quat(Rp)
+    return Rp, quats_p
+
+def basis_from_normal(n, roll=0.0, axis='y'):
+    """
+    n: (3,) plane normal (not necessarily unit)
+    roll: in-plane rotation (radians) around n
+    axis: which local axis should align with n: 'x' | 'y' | 'z'
+    Returns: R (3,3) with columns = world directions of local axes
+    """
+    n = normalize(n)
+    # choose a reference not parallel to n
+    ref = torch.tensor([0.0, 0.0, 1.0], dtype=n.dtype, device=n.device)
+    if torch.abs((n * ref).sum()) > 0.999:  # nearly parallel
+        ref = torch.tensor([0.0, 1.0, 0.0], dtype=n.dtype, device=n.device)
+
+    # tangent basis (x_tan, y_tan)
+    x_tan = normalize(torch.linalg.cross(ref, n))
+    y_tan = torch.linalg.cross(n, x_tan)
+
+    # apply in-plane roll
+    c, s = torch.cos(torch.tensor(roll, dtype=n.dtype, device=n.device)), torch.sin(torch.tensor(roll, dtype=n.dtype, device=n.device))
+    u = x_tan * c + y_tan * s
+    v = -x_tan * s + y_tan * c
+
+    if axis == 'z':      # local z -> n
+        R = torch.stack([u, v, n], dim=1)
+    elif axis == 'y':    # local y -> n
+        R = torch.stack([u, n, v], dim=1)
+    elif axis == 'x':    # local x -> n
+        R = torch.stack([n, u, v], dim=1)
+    else:
+        raise ValueError("axis must be 'x','y','z'")
+    return R
 
 @torch.no_grad()
 def fill_hole_with_known_plane(points_xyz,
@@ -525,6 +622,63 @@ def assign_attrs_for_new_gaussians(
         "features_dc": features_dc.unsqueeze(0).expand(N, -1)
     }
 
+@torch.no_grad()
+def mask_by_plane_alignment(
+    n,                      # (3,) plane normal (need not be unit)
+    gaussians,             
+    tau_deg=20.0,           # threshold in degrees
+    align='normal',         # 'normal' or 'tangent'
+    scales_log=True,        # exp() to get axis lengths if using 3DGS-style log-scales
+    isotropy_eps=1e-3       # if axes are ~equal, orientation is ambiguous
+):
+    """
+    Returns boolean keep_mask of shape (N,) where True means "keep this Gaussian".
+    Strategy: pick the axis with the smallest scale, compare to plane normal.
+    """
+    quats  = gaussians["quats"]     # (N,4)
+    scales = gaussians["scales"]    # (N,3) - log-scales in 3DGS; set scales_log=True if so
+
+    device = quats.device
+    n = n.to(device, dtype=quats.dtype)
+    n = n / (torch.linalg.norm(n) + 1e-12)
+
+    # Effective axis lengths
+    axis_len = torch.exp(scales) if scales_log else scales
+    # Smallest axis index (N,)
+    idx_min = torch.argmin(axis_len, dim=1)  # the axis we expect to align with the plane normal
+
+    # Convert quats to rotation matrices
+    R = quat_to_mat(quats)  # (N,3,3)
+
+    # Gather the world-space direction of that axis: columns of R are rotated basis axes
+    # Build an index tensor to pick column idx_min for each row
+    N = quats.shape[0]
+    col_idx = idx_min.view(N, 1, 1).expand(N, 3, 1)
+    axis_world = torch.gather(R, dim=2, index=col_idx).squeeze(2)  # (N,3)
+    axis_world = axis_world / (torch.linalg.norm(axis_world, dim=1, keepdim=True) + 1e-12)
+
+    # Angle to plane normal
+    cosang = torch.sum(axis_world * n.unsqueeze(0), dim=1).abs()     # |cos(theta)|
+    cosang = torch.clamp(cosang, -1.0, 1.0)
+    theta = torch.arccos(cosang)                                     # radians
+    tau = torch.tensor(tau_deg, device=device, dtype=theta.dtype) * (torch.pi/180.0)
+
+    # Handle near-isotropic Gaussians where orientation isn't meaningful
+    span = axis_len.max(dim=1).values - axis_len.min(dim=1).values   # (N,)
+    not_isotropic = span > isotropy_eps
+
+    if align == 'normal':
+        # aligned if theta <= tau
+        ok = theta <= tau
+    elif align == 'tangent':
+        # tangent means axis ⟂ normal => theta ~ 90°. Keep if |90° - theta| <= tau
+        ok = (torch.abs((torch.pi/2) - theta) <= tau)
+    else:
+        raise ValueError("align must be 'normal' or 'tangent'")
+
+    # Only enforce orientation when it's meaningful; otherwise keep
+    keep_mask = torch.where(not_isotropic, ok, torch.ones_like(ok, dtype=torch.bool))
+    return keep_mask
 
 
 
