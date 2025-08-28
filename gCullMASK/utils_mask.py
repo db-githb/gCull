@@ -5,6 +5,7 @@ import matplotlib.pyplot  as plt
 from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection
 from sam2.build_sam import build_sam2
 from sam2.sam2_image_predictor import SAM2ImagePredictor
+from pathlib import Path
 
 from gCullUTILS.utils import get_downscale_dir
 
@@ -22,15 +23,15 @@ def setup_mask(data_dir):
   predictor = SAM2ImagePredictor(sam2_model)
   return predictor, processor, dino
 
-def get_bounding_boxes(image_pil, prompt, processor, dino):
+def get_bounding_boxes(image_pil, prompt, processor, dino, box_threshold = .9, text_threshold = .25):
   inputs = processor(images=image_pil, text=[prompt], return_tensors="pt").to("cuda")
   with torch.no_grad():
     outputs = dino(**inputs)
   results = processor.post_process_grounded_object_detection(
     outputs,
     inputs.input_ids,
-    box_threshold=0.9,
-    text_threshold=0.25,
+    box_threshold=box_threshold,
+    text_threshold=text_threshold,
     target_sizes=[image_pil.size[::-1]]
   )
   return results[0]["boxes"].cpu().numpy().astype(int)
@@ -62,10 +63,9 @@ def disp_mask(image_rgb, binary_mask):
     plt.show()
 
 def process_images(data_dir):
-  from pathlib import Path
   root = data_dir #"/content/drive/My Drive/discord_car/"
   #image_dir, downscale_factor = get_downscale_dir(root)
-  image_dir = Path("renders/IMG_4718/")
+  image_dir = Path(root)
   downscale_factor = 1
   image_paths = sorted([
       os.path.join(image_dir, f)

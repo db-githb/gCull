@@ -22,7 +22,7 @@ class MaskProcessor:
     self.prompt = prompt
     self.inspect = inspect
 
-  def mask_loop(self, downscale_factor, image_paths, predictor, processor, dino):
+  def mask_loop(self, downscale_factor, image_paths, predictor, processor, dino, bt, tt):
     root = self.data_dir.resolve().parents[1] / "data" / self.data_dir.name
     if downscale_factor > 1:
        save_dir = root / f"masks_{downscale_factor}"
@@ -36,7 +36,7 @@ class MaskProcessor:
         image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         image_pil = Image.fromarray(image_rgb)
 
-        boxes = get_bounding_boxes(image_pil, self.prompt, processor, dino)
+        boxes = get_bounding_boxes(image_pil, self.prompt, processor, dino, bt, tt)
 
         bool_mask = get_masks(image_pil, boxes, predictor).astype(bool)
         inverted_mask = ~bool_mask
@@ -60,10 +60,10 @@ class MaskProcessor:
     return save_dir
 
 # main/driver function
-  def run_mask_processing(self):
+  def run_mask_processing(self, bt, tt):
     image_paths, df = process_images(self.data_dir)
     predictor, processor, dino = setup_mask(self.data_dir)
-    save_dir = self.mask_loop(df, image_paths, predictor, processor, dino)
+    save_dir = self.mask_loop(df, image_paths, predictor, processor, dino, bt, tt)
     mask_dir = Path(save_dir).resolve()
     linked_name = f"[link=file://{mask_dir}]{mask_dir}[/link]"
     CONSOLE.log(f"🎉 Finished! 🎉")

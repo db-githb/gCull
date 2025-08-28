@@ -88,34 +88,37 @@ class DatasetCull(BaseCull):
        
 
         # render images from modified model
-        #CONSOLE.print("[bold][yellow]Rendering frames for mask extraction...[/bold]")
-        #render_dir = render_loop(self.model_path, config, pipeline)
-        #CONSOLE.log("[bold][green]:tada: Render Complete :tada:[/bold]")
+        CONSOLE.print("[bold][yellow]Rendering frames for mask extraction...[/bold]")
+        render_dir = render_loop(self.model_path, config, pipeline)
+        CONSOLE.log("[bold][green]:tada: Render Complete :tada:[/bold]")
 
         # get masks from rendered images
-        #mp = MaskProcessor(render_dir, "ground")
-        #mp = MaskProcessor(Path("renders/IMG_4718/"), "car")
-        #mp.run_mask_processing()
-
-        # Phase 2 - run gCull
+        #render_dir = "renders/VelarOutput/"
+        CONSOLE.log(f":car: Isolating car")
+        mp_car = MaskProcessor(Path(render_dir), "car")
+        mp_car.run_mask_processing(.9, .25)
         keep = cull_loop(config, pipeline)
         pipeline.model = modify_model(pipeline.model, keep)
-        gCull_total = pipeline.model.means.shape[0]
-        CONSOLE.log(f"Total culled: {(statcull_total-keep.sum().item())}/{statcull_total} ➜ New Total = {gCull_total}")
 
-        # Phase 3 - find ground
-        CONSOLE.log(f":running: Running RANSAC and finding ground plane...")
+        #CONSOLE.log(f":running: Running RANSAC and finding ground plane...")
         keep, is_ground, norm, offset = find_ground_plane(pipeline.model)
         ground_gaussians = get_ground_gaussians(pipeline.model, is_ground)
         CONSOLE.log(f"Culling noisy ground gaussians")
         pipeline.model = modify_model(pipeline.model, keep)
-        CONSOLE.log(f"Total culled: {(gCull_total-keep.sum().item())}/{gCull_total} ➜ New Total = {pipeline.model.means.shape[0]}")
 
+        #CONSOLE.log(f":herb: Isolating Ground")
+        mp_ground = MaskProcessor(Path(render_dir), "ground")
+        mp_ground.run_mask_processing(.5, .25)
+        remove = ~cull_loop(config, pipeline)
+        pipeline.model = modify_model(pipeline.model, remove)
+
+        #CONSOLE.log(f"Total culled: {(statcull_total-keep.sum().item())}/{statcull_total} ➜ New Total = {gCull_total}")
+        
         # Phase 4 - create ground
-        CONSOLE.log(f"create ground plane...")
+        CONSOLE.log(f":seedling: Create ground plane...")
         p0 = p0_from_inliers_centroid(ground_gaussians["means"], norm)
-        length = ground_gaussians["means"][:,1].max() - ground_gaussians["means"][:,1].min()
-        ground_tile = fill_plane_with_gaussians(norm, p0, 100, 100, .1) #only has means, quats, scales
+          #length = ground_gaussians["means"][:,1].max() - ground_gaussians["means"][:,1].min()
+        ground_tile = fill_plane_with_gaussians(norm, p0, 100, 100, .1, jitter=.1) #only has means, quats, scales
         
         N = ground_tile["means"].shape[0]
         dev = ground_tile["means"].device
@@ -123,8 +126,8 @@ class DatasetCull(BaseCull):
         opacity = ground_gaussians["opacities"].median()
         ground_tile["opacities"] = torch.full((ground_tile["means"].shape[0],1), opacity.item(), device=dev, dtype=dt)
         ground_tile["features_dc"], ground_tile["features_rest"] = sample_sh_by_index(ground_gaussians["features_dc"], ground_gaussians["features_rest"], N)
-        new_gaussians = ground_tile
-        #new_gaussians["means"][:,1] += length
+        pipeline.model = append_gaussians_to_model(pipeline.model, ground_tile)
+         #new_gaussians["means"][:,1] += length
         
         
         # Phase 4 - cull gaussians with angular deviation from ground plane
@@ -134,7 +137,7 @@ class DatasetCull(BaseCull):
         # Phase 5 - expand ground
         #CONSOLE.log(f"Expanding ground")
         #new_gaussians = densify_ground_plane_jitter(ground_gaussians, norm, offset)
-        pipeline.model = append_gaussians_to_model(pipeline.model, new_gaussians)
+        #pipeline.model = append_gaussians_to_model(pipeline.model, new_gaussians)
         #CONSOLE.log(f"New Total = {pipeline.model.means.shape[0]}")
 
         #complete_ground_gaussians = get_all_ground_gaussians(ground_gaussians, new_gaussians)

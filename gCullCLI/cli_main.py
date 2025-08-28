@@ -1,3 +1,4 @@
+import torch
 import argparse
 from pathlib import Path
 from gCullPY.main.gcull_main import DatasetCull
@@ -32,5 +33,6 @@ def main():
         dc = DatasetCull(Path(args.model_path), mask_dir=args.mask_dir, output_dir=args.output_dir)
         dc.run_cull()
 
-if __name__ == "__main__":
-    main()
+with torch.inference_mode():
+    if __name__ == "__main__":
+        main()
