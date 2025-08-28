@@ -23,35 +23,50 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
-import torch
+from gCullPY.main.utils_main import (
+    write_ply,
+    load_config, 
+    render_loop,
+    run_mask_processing)
 
-from gCullPY.pipelines.base_pipeline import VanillaPipelineConfig
-
-from gCullPY.main.utils_main import write_ply, load_config, render_loop
 from gCullPY.main.utils_cull import (
     statcull, 
     modify_model,
-    cull_loop, 
-    visualize_mask_and_points,
+)
+
+from gCullPY.main.utils_ground import (
     find_ground_plane,
     get_ground_gaussians,
-    modify_ground_gaussians, 
-    densify_ground_plane_jitter, 
-    append_gaussians_to_model,
-    get_all_ground_gaussians,
-    fill_hole_with_known_plane,
-    assign_attrs_for_new_gaussians,
-    mask_by_plane_alignment,
-    make_eight_offset_tiles,
-    concat_tiles,
-    fill_plane_with_gaussians,
-    p0_from_inliers_centroid,
-    sample_sh_by_index
+    ground_driver
 )
-from gCullMASK.mask_main import MaskProcessor
+
 from gCullUTILS.rich_utils import CONSOLE, TABLE
 from rich.panel import Panel
 from threading import Thread
+
+import time
+from contextlib import contextmanager
+
+def _pct(n, d):  # safe percent string
+    return f"{(n/d):.1%}" if d else "n/a"
+
+@contextmanager
+def step(console, title, emoji=":arrow_forward:"):
+    t0 = time.perf_counter()
+    console.log(f"{emoji} [bold]{title}[/bold]")
+    try:
+        yield
+    finally:
+        dt = time.perf_counter() - t0
+        console.log(f":white_check_mark: Done [dim]({dt:.2f}s)[/dim]")
+
+def log_totals(console, before, after, noun="splats"):
+    culled = before - after
+    console.log(
+        f"• Removed {culled}/{before} {noun} "
+        f"([bold]{_pct(culled, before)}[/bold]) → total: [bold]{after}[/bold]"
+    )
+
 
 @dataclass
 class BaseCull:
@@ -78,85 +93,53 @@ class DatasetCull(BaseCull):
             test_mode="inference",
         )
         config.datamanager.dataparser.downscale_factor = 1
-        # Phase 1 - run statCull
+        # Phase 1 — statistical cull
         starting_total = pipeline.model.means.shape[0]
-        cull_mask = statcull(pipeline)
-        keep = ~cull_mask
-        pipeline.model = modify_model(pipeline.model, keep)
-        statcull_total = pipeline.model.means.shape[0]
-        CONSOLE.log(f"Phase 1 culled: {cull_mask.sum().item()}/{starting_total} ➜ New Total = {statcull_total}")
-       
+        with step(CONSOLE, "Phase 1 — Statistical cull", emoji=":broom:"):
+            cull_mask = statcull(pipeline)
+            keep = ~cull_mask
+            pipeline.model = modify_model(pipeline.model, keep)
+            statcull_total = pipeline.model.means.shape[0]
+            log_totals(CONSOLE, starting_total, statcull_total)
 
-        # render images from modified model
-        CONSOLE.print("[bold][yellow]Rendering frames for mask extraction...[/bold]")
-        render_dir = render_loop(self.model_path, config, pipeline)
-        CONSOLE.log("[bold][green]:tada: Render Complete :tada:[/bold]")
+        # Phase 2 — render frames
+        with step(CONSOLE, "Phase 2 — Rendering frames for mask extraction", emoji=":film_frames:"):
+            render_dir = render_loop(self.model_path, config, pipeline)
+            CONSOLE.log(":tada: Render complete")
 
-        # get masks from rendered images
-        #render_dir = "renders/VelarOutput/"
-        CONSOLE.log(f":car: Isolating car")
-        mp_car = MaskProcessor(Path(render_dir), "car")
-        mp_car.run_mask_processing(.9, .25)
-        keep = cull_loop(config, pipeline)
-        pipeline.model = modify_model(pipeline.model, keep)
+        # Phase 3a — car mask (keep car)
+        with step(CONSOLE, "Phase 3a — Apply car mask (keep car)", emoji=":car:"):
+            pipeline.model = run_mask_processing("car", 0.9, 0.25, False, render_dir, config, pipeline)
 
-        #CONSOLE.log(f":running: Running RANSAC and finding ground plane...")
-        keep, is_ground, norm, offset = find_ground_plane(pipeline.model)
-        ground_gaussians = get_ground_gaussians(pipeline.model, is_ground)
-        CONSOLE.log(f"Culling noisy ground gaussians")
-        pipeline.model = modify_model(pipeline.model, keep)
+        # Phase 3b — ground plane via RANSAC
+        with step(CONSOLE, "Phase 3b — Find ground plane (RANSAC)", emoji=":triangular_ruler:"):
+            keep, is_ground, norm, offset = find_ground_plane(pipeline.model)
+            ground_gaussians = get_ground_gaussians(pipeline.model, is_ground)
+            before = pipeline.model.means.shape[0]
+            pipeline.model = modify_model(pipeline.model, keep)
+            after = pipeline.model.means.shape[0]
+            norm_fmt = ", ".join(f"{x:.4f}" for x in norm.detach().cpu().tolist())
+            CONSOLE.log(f"• Plane normal: {tuple(norm_fmt)}  offset: {float(offset):.4f}")
+            log_totals(CONSOLE, before, after)
 
-        #CONSOLE.log(f":herb: Isolating Ground")
-        mp_ground = MaskProcessor(Path(render_dir), "ground")
-        mp_ground.run_mask_processing(.5, .25)
-        remove = ~cull_loop(config, pipeline)
-        pipeline.model = modify_model(pipeline.model, remove)
+        # Phase 3c — ground mask (remove ground pixels)
+        with step(CONSOLE, "Phase 3c — Apply ground mask (remove ground)", emoji=":herb:"):
+            # NOTE: set invert=True if your run_mask_processing keeps matches by default.
+            pipeline.model = run_mask_processing("ground", 0.5, 0.25, True, render_dir, config, pipeline)
 
-        #CONSOLE.log(f"Total culled: {(statcull_total-keep.sum().item())}/{statcull_total} ➜ New Total = {gCull_total}")
-        
-        # Phase 4 - create ground
-        CONSOLE.log(f":seedling: Create ground plane...")
-        p0 = p0_from_inliers_centroid(ground_gaussians["means"], norm)
-          #length = ground_gaussians["means"][:,1].max() - ground_gaussians["means"][:,1].min()
-        ground_tile = fill_plane_with_gaussians(norm, p0, 100, 100, .1, jitter=.1) #only has means, quats, scales
-        
-        N = ground_tile["means"].shape[0]
-        dev = ground_tile["means"].device
-        dt = ground_tile["quats"].dtype
-        opacity = ground_gaussians["opacities"].median()
-        ground_tile["opacities"] = torch.full((ground_tile["means"].shape[0],1), opacity.item(), device=dev, dtype=dt)
-        ground_tile["features_dc"], ground_tile["features_rest"] = sample_sh_by_index(ground_gaussians["features_dc"], ground_gaussians["features_rest"], N)
-        pipeline.model = append_gaussians_to_model(pipeline.model, ground_tile)
-         #new_gaussians["means"][:,1] += length
-        
-        
-        # Phase 4 - cull gaussians with angular deviation from ground plane
-        #keep = mask_by_plane_alignment(norm, ground_gaussians, tau_deg=20.0)
-        #ground_gaussians = modify_ground_gaussians(ground_gaussians, keep)
+        # Phase 4 — synthesize/restore ground
+        with step(CONSOLE, "Phase 4 — Synthesize ground plane geometry", emoji=":seedling:"):
+            before = pipeline.model.means.shape[0]
+            pipeline.model = ground_driver(norm, ground_gaussians, pipeline)
+            after = pipeline.model.means.shape[0]
+            added = after - before
+            CONSOLE.log(f"• Added {added} ground splats")
 
-        # Phase 5 - expand ground
-        #CONSOLE.log(f"Expanding ground")
-        #new_gaussians = densify_ground_plane_jitter(ground_gaussians, norm, offset)
-        #pipeline.model = append_gaussians_to_model(pipeline.model, new_gaussians)
-        #CONSOLE.log(f"New Total = {pipeline.model.means.shape[0]}")
-
-        #complete_ground_gaussians = get_all_ground_gaussians(ground_gaussians, new_gaussians)
-        #new_pts = fill_hole_with_known_plane(complete_ground_gaussians["means"].cpu(), norm.cpu(), offset.cpu(), keep_ratio=.1) # points to fill hole
-        #timbit =  assign_attrs_for_new_gaussians(complete_ground_gaussians, new_pts)
-        #timbit_dense = densify_ground_plane_jitter(timbit, norm, offset, samples_per_point=80, expand_scale=2)
-        #complete_ground_tile = get_all_ground_gaussians(ground_gaussians, timbit_dense)
-        #length = complete_ground_tile["means"][:,1].max() - complete_ground_tile["means"][:,1].min()
-        ##complete_ground_tile["means"][:,1] += length
-        #eight_tiles = make_eight_offset_tiles(complete_ground_tile, length)
-        #complete_ground_tile = concat_tiles(eight_tiles)
-        #pipeline.model = append_gaussians_to_model(pipeline.model, complete_ground_tile)
-        #CONSOLE.log(f"New Total = {pipeline.model.means.shape[0]}")
-
-        # write modified model to file
-        CONSOLE.log(f"Writing to ply...")
-        filename = write_ply(self.model_path, pipeline.model)
-        path = Path(filename)
-        dir = config.datamanager.data.parents[1] / path.parent
-        linked_name = f"[link=file://{dir}/]{path.name}[/link]"
-        TABLE.add_row(f"Final 3DGS model", linked_name)
-        CONSOLE.log(Panel(TABLE, title="[bold green]🎉 Cull Complete![/bold green] 🎉", expand=False))
+        # Phase 5 — write PLY
+        with step(CONSOLE, "Phase 5 — Write PLY", emoji=":floppy_disk:"):
+            filename = write_ply(self.model_path, pipeline.model)
+            path = Path(filename)
+            dir = config.datamanager.data.parents[1] / path.parent
+            linked = f"[link=file://{dir}/]{path.name}[/link]"
+            TABLE.add_row("Final 3DGS model", linked)
+            CONSOLE.log(Panel(TABLE, title="[bold green]🎉 Cull Complete![/bold green] 🎉", expand=False))

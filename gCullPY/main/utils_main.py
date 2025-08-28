@@ -16,23 +16,14 @@ from gCullPY.models.splatfacto import SplatfactoModelConfig
 from gCullPY.data.dataparsers.colmap_dataparser import ColmapDataParserConfig
 from gCullPY.data.dataparsers.nerfstudio_dataparser import NerfstudioDataParserConfig
 from gCullPY.data.datasets.base_dataset import InputDataset
-from gCullPY.data.utils.dataloaders import FixedIndicesEvalDataloader
+from gCullMASK.mask_main import MaskProcessor
+from gCullPY.main.utils_cull import ( 
+    build_loader,
+    modify_model,
+    cull_loop
+)
 import sys, os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from contextlib import contextmanager
-
-@contextmanager
-def _disable_datamanager_setup(cls):
-    """
-    Disables setup_train or setup_eval for faster initialization.
-    """
-    old_setup_train = getattr(cls, "setup_train")
-    old_setup_eval = getattr(cls, "setup_eval")
-    setattr(cls, "setup_train", lambda *args, **kwargs: None)
-    setattr(cls, "setup_eval", lambda *args, **kwargs: None)
-    yield cls
-    setattr(cls, "setup_train", old_setup_train)
-    setattr(cls, "setup_eval", old_setup_eval)
 
 def to_path(val):
         if isinstance(val, list):
@@ -281,25 +272,6 @@ def write_ply(model_path, model):
     
     return filename
 
-def build_loader(config, split, device):
-    test_mode = "train" if split == "train" else "test"
-
-    with _disable_datamanager_setup(config.datamanager._target):  # pylint: disable=protected-access
-        datamanager = config.datamanager.setup(
-            test_mode=test_mode,
-            device=device
-        )
-        
-    dataset = getattr(datamanager, f"{split}_dataset", datamanager.eval_dataset)
-    
-    dataloader = FixedIndicesEvalDataloader(
-        input_dataset=dataset,
-        device=datamanager.device,
-        num_workers=datamanager.world_size * 4,
-    )
-    
-    return dataset, dataloader
-
 def render_loop(model_path, config, pipeline):
         #df = config.datamanager.dataparser.downscale_factor 
         #pipeline.model.downscale_factor = df
@@ -329,3 +301,11 @@ def render_loop(model_path, config, pipeline):
                     Image.fromarray(img_np).save(output_dir / f"frame_{idx:05d}.png")
                     idx+=1
         return output_dir
+
+def run_mask_processing(label, t1, t2, invert, render_dir, config, pipeline):
+    mp = MaskProcessor(Path(render_dir), label)
+    mp.run_mask_processing(t1, t2)
+    mask = cull_loop(config, pipeline)          # True where it matches the mask
+    sel  = ~mask if invert else mask            # invert==True ⇒ remove matches
+    pipeline.model = modify_model(pipeline.model, sel)
+    return pipeline.model

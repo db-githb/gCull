@@ -1,4 +1,7 @@
-import torch
+import os, torch
+caps = {torch.cuda.get_device_capability(i) for i in range(torch.cuda.device_count())}
+os.environ["TORCH_CUDA_ARCH_LIST"] = ";".join(f"{m}.{n}" for m, n in sorted(caps))
+
 import argparse
 from pathlib import Path
 from gCullPY.main.gcull_main import DatasetCull
