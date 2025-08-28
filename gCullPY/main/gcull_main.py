@@ -118,8 +118,8 @@ class DatasetCull(BaseCull):
             before = pipeline.model.means.shape[0]
             pipeline.model = modify_model(pipeline.model, keep)
             after = pipeline.model.means.shape[0]
-            norm_fmt = ", ".join(f"{x:.4f}" for x in norm.detach().cpu().tolist())
-            CONSOLE.log(f"• Plane normal: {tuple(norm_fmt)}  offset: {float(offset):.4f}")
+            nvals = norm.detach().cpu().tolist()
+            CONSOLE.log(f"• Plane normal: {tuple(round(float(x), 3) for x in nvals)}  offset: {float(offset):.3f}")
             log_totals(CONSOLE, before, after)
 
         # Phase 3c — ground mask (remove ground pixels)
